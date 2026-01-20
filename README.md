@@ -132,3 +132,7 @@ chrome-drawer/
 - 📚 历史记录功能
 
 Made with love for AI art enthusiasts
+
+---
+
+**English version available at [README_EN.md](README_EN.md)**
