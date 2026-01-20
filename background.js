@@ -192,22 +192,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
     });
     return true;
-  } else if (message.action === "editImage") {
-    // 处理改图请求
-    chrome.storage.local.get("settings").then((res) => {
-      const providers = res.settings?.providers || [];
-      const provider = providers.find((p) => p.id === message.providerId);
-      if (provider) {
-        handleGenerateImage(
-          message.prompt,
-          provider,
-          sender.tab?.id,
-          message.imageUrl,
-          "edit",
-        );
-      }
-    });
-    return true;
+
   } else if (message.action === "saveImage") {
     // 处理来自页面或其他地方的手动保存请求
     chrome.storage.local.get("settings").then((res) => {

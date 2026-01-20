@@ -368,7 +368,16 @@ function closeModal() {
 
 async function copyImage(item) {
   try {
-    // 使用 canvas 方式复制图片，解决 blob URL 和跨域问题
+    // 如果是base64 URL，直接使用
+    if (item.imageUrl.startsWith('data:')) {
+      const response = await fetch(item.imageUrl);
+      const blob = await response.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      showNotification("图片已复制到剪贴板", "success");
+      return;
+    }
+
+    // 对于普通URL，使用 canvas 方式复制图片，解决 blob URL 和跨域问题
     const img = new Image();
     img.crossOrigin = "anonymous";
 
@@ -567,6 +576,39 @@ function showNotification(message, type = "info") {
 }
 
 async function fetchBlobWithFallback(url) {
+  // 如果是base64 URL，直接转换为blob
+  if (url.startsWith('data:')) {
+    try {
+      // 对于base64 URL，使用更可靠的转换方法
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Base64 fetch failed: ${response.status}`);
+      }
+      return await response.blob();
+    } catch (error) {
+      console.warn("Base64 URL fetch失败，尝试手动转换:", error);
+      
+      // 手动转换base64为blob的备用方法
+      try {
+        const [header, base64Data] = url.split(',');
+        const mimeMatch = header.match(/data:([^;]+)/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+        
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mimeType });
+      } catch (manualError) {
+        console.error("手动转换base64也失败:", manualError);
+        throw error;
+      }
+    }
+  }
+
+  // 对于普通HTTP URL，使用原有逻辑
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error("Fetch failed");
