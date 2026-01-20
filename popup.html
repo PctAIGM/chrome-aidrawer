@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI画图助手</title>
+  <link rel="stylesheet" href="styles/popup.css">
+</head>
+
+<body>
+  <div class="popup-container">
+    <header>
+      <h1>🎨 AI画图助手</h1>
+    </header>
+
+    <main>
+      <div id="inputSection" class="section">
+        <textarea id="promptInput" placeholder="输入图片描述..."></textarea>
+        <div class="provider-select">
+          <label>选择服务商:</label>
+          <select id="provider">
+            <!-- 动态加载服务商 -->
+          </select>
+        </div>
+        <div id="imageUrlGroup" class="input-group" style="display: none;">
+          <label>图片来源:</label>
+          <div class="image-source-tabs">
+            <button type="button" id="urlTab" class="tab-btn active">输入URL</button>
+            <button type="button" id="uploadTab" class="tab-btn">上传图片</button>
+          </div>
+          
+          <div id="urlSection" class="image-input-section">
+            <input type="text" id="imageUrlInput" placeholder="输入要编辑的图片URL...">
+          </div>
+          
+          <div id="uploadSection" class="image-input-section" style="display: none;">
+            <div class="upload-area">
+              <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+              <button type="button" id="selectImageBtn" class="btn secondary">📁 选择图片</button>
+              <button type="button" id="uploadImageBtn" class="btn secondary" style="display: none;">📤 上传到图床</button>
+            </div>
+            <div id="uploadStatus" class="upload-status" style="display: none;"></div>
+            <div id="imagePreview" class="image-preview" style="display: none;">
+              <img id="previewImg" src="" alt="预览图片">
+              <button type="button" id="removeImageBtn" class="remove-btn">&times;</button>
+            </div>
+          </div>
+          
+          <span class="hint">改图服务需要提供图片</span>
+        </div>
+        <button id="generateBtn" class="btn primary">
+          <span class="btn-text">生成图片</span>
+          <span class="btn-loading" style="display: none;">生成中...</span>
+        </button>
+      </div>
+
+      <div id="resultSection" class="section" style="display: none;">
+        <div class="result-image">
+          <img id="resultImg" src="" alt="生成的图片">
+        </div>
+        <div class="result-actions">
+          <button id="copyBtn" class="btn secondary">复制图片</button>
+          <button id="downloadBtn" class="btn secondary">下载</button>
+          <button id="newBtn" class="btn primary">重新生成</button>
+        </div>
+        <p id="resultPrompt" class="result-prompt"></p>
+      </div>
+
+      <div id="errorSection" class="section" style="display: none;">
+        <div class="error-message">
+          <p id="errorText"></p>
+        </div>
+        <button id="retryBtn" class="btn primary">重试</button>
+      </div>
+    </main>
+
+    <footer>
+      <a href="history.html" target="_blank" class="footer-link">查看历史记录</a>
+      <a href="options.html" target="_blank" class="footer-link">设置</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

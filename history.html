@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AI画图助手 - 历史记录</title>
+        <link rel="stylesheet" href="styles/history.css" />
+    </head>
+
+    <body>
+        <div class="container">
+            <header>
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1>AI画图助手</h1>
+                        <p class="subtitle">历史记录</p>
+                    </div>
+                    <div class="header-right">
+                        <span id="historyCount">0 条记录</span>
+                    </div>
+                </div>
+            </header>
+
+            <main>
+                <div class="toolbar">
+                    <div class="search-box">
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="搜索提示词..."
+                        />
+                        <button id="searchBtn" class="btn-icon">搜索</button>
+                    </div>
+                    <div class="toolbar-actions">
+                        <label class="select-all-label">
+                            <input type="checkbox" id="selectAllCheckbox" />
+                            <span>全选</span>
+                        </label>
+                        <button
+                            id="exportSelectedBtn"
+                            class="btn primary"
+                            disabled
+                        >
+                            导出选中 (0)
+                        </button>
+                        <button id="clearAllBtn" class="btn danger">
+                            清空全部
+                        </button>
+                    </div>
+                </div>
+
+                <div id="gallery" class="gallery">
+                    <div class="loading">加载中...</div>
+                </div>
+
+                <div id="emptyState" class="empty-state" style="display: none">
+                    <div class="empty-icon">📷</div>
+                    <p>暂无历史记录</p>
+                    <p class="hint">
+                        选中文字后使用 AI 生成图片，记录会保存在这里
+                    </p>
+                </div>
+            </main>
+        </div>
+
+        <div id="imageModal" class="modal">
+            <div class="modal-content">
+                <span class="modal-close">&times;</span>
+                <div id="modalImageViewer" class="modal-image-viewer">
+                    <img id="modalImage" src="" alt="预览图片" />
+                </div>
+                <div class="modal-info">
+                    <p id="modalPrompt"></p>
+                    <p id="modalMeta"></p>
+                </div>
+                <div class="modal-actions">
+                    <button id="modalCopyBtn" class="btn primary">
+                        复制到剪贴板
+                    </button>
+                    <button id="modalDownloadBtn" class="btn secondary">
+                        下载图片
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <script src="lib/jszip.min.js"></script>
+        <script src="history.js"></script>
+    </body>
+</html>
