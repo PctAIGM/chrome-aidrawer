@@ -61,9 +61,13 @@
         <div class="result-actions">
           <button id="copyBtn" class="btn secondary">复制图片</button>
           <button id="downloadBtn" class="btn secondary">下载</button>
+          <button id="uploadToAlbumBtn" class="btn secondary icon-only" style="display: none;" title="分享到相册">🔗</button>
           <button id="newBtn" class="btn primary">重新生成</button>
         </div>
-        <p id="resultPrompt" class="result-prompt"></p>
+        <div class="result-prompt-section">
+          <button id="togglePromptBtn" class="toggle-prompt-btn">显示提示词</button>
+          <div id="resultPrompt" class="result-prompt" style="display: none;"></div>
+        </div>
       </div>
 
       <div id="errorSection" class="section" style="display: none;">

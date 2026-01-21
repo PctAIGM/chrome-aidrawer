@@ -1109,16 +1109,33 @@ function showInjectedSuccessStatus(imageUrl, prompt, allowNSFW = false) {
     `;
 
     modal.innerHTML = `
-      <div style="background: white; padding: 20px; border-radius: 12px; max-width: 500px; width: 90%; max-height: 90%; overflow: auto; text-align: center;">
+      <div style="background: white; padding: 20px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 90%; overflow: auto; text-align: center;">
         <div id="ai-draw-img-wrapper" style="position: relative; display: inline-block; cursor: pointer;">
           <img id="ai-draw-result-img" src="${imageUrl}" style="max-width: 100%; max-height: 70vh; border-radius: 8px; ${blurStyle}">
           ${overlayHtml}
         </div>
-        <p style="margin: 12px 0 16px; color: #666; font-size: 14px;">${prompt}</p>
-        <button id="ai-draw-close-btn" style="
-          background: #667eea; color: white; border: none; padding: 10px 24px;
-          border-radius: 6px; cursor: pointer; font-weight: 500;
-        ">关闭</button>
+        <div style="margin: 12px 0 16px;">
+          <button id="ai-draw-toggle-prompt" style="
+            background: transparent; border: none; color: #666; font-size: 12px;
+            cursor: pointer; text-decoration: underline; padding: 4px 8px;
+          ">显示/隐藏提示词</button>
+          <div id="ai-draw-prompt-text" style="
+            color: #666; font-size: 14px; margin-top: 8px; display: none;
+            max-height: 100px; overflow-y: auto; text-align: left; 
+            background: #f8f9fa; padding: 12px; border-radius: 6px;
+          ">${prompt}</div>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: center; align-items: center;">
+          <button id="ai-draw-share-btn" style="
+            background: #f0f0f0; color: #333; border: none; padding: 10px 12px;
+            border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 16px;
+            display: none;
+          " title="分享到相册">🔗</button>
+          <button id="ai-draw-close-btn" style="
+            background: #667eea; color: white; border: none; padding: 10px 24px;
+            border-radius: 6px; cursor: pointer; font-weight: 500;
+          ">关闭</button>
+        </div>
       </div>
     `;
     modal.onclick = (e) => {
@@ -1128,6 +1145,83 @@ function showInjectedSuccessStatus(imageUrl, prompt, allowNSFW = false) {
 
     // 绑定关闭按钮
     document.getElementById("ai-draw-close-btn").onclick = () => modal.remove();
+
+    // 绑定提示词切换按钮
+    document.getElementById("ai-draw-toggle-prompt").onclick = () => {
+      const promptText = document.getElementById("ai-draw-prompt-text");
+      if (promptText.style.display === "none") {
+        promptText.style.display = "block";
+      } else {
+        promptText.style.display = "none";
+      }
+    };
+
+    // 检查是否有上传服务，显示分享按钮
+    // 注意：这个函数是注入到页面的，需要使用不同的方式调用chrome API
+    try {
+      chrome.runtime.sendMessage({ action: "getSettings" }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log('获取设置失败:', chrome.runtime.lastError);
+          return;
+        }
+        
+        const uploadServices = response.imageUploadServices || [];
+        const hasActiveUploadService = uploadServices.some(service => service.isActive);
+        
+        const shareBtn = document.getElementById("ai-draw-share-btn");
+        if (shareBtn && hasActiveUploadService) {
+          shareBtn.style.display = "inline-block";
+          shareBtn.onclick = () => {
+            shareBtn.disabled = true;
+            shareBtn.textContent = "⏳";
+            
+            chrome.runtime.sendMessage({
+              action: 'uploadImageToAlbum',
+              imageUrl: imageUrl,
+              prompt: prompt
+            }, (result) => {
+              if (chrome.runtime.lastError) {
+                console.error('上传失败:', chrome.runtime.lastError);
+                shareBtn.textContent = "❌";
+                shareBtn.style.background = "#f56565";
+                shareBtn.style.color = "white";
+                setTimeout(() => {
+                  shareBtn.textContent = "🔗";
+                  shareBtn.style.background = "#f0f0f0";
+                  shareBtn.style.color = "#333";
+                  shareBtn.disabled = false;
+                }, 2000);
+                return;
+              }
+              
+              if (result && result.success) {
+                shareBtn.textContent = "✅";
+                shareBtn.style.background = "#48bb78";
+                shareBtn.style.color = "white";
+                setTimeout(() => {
+                  shareBtn.textContent = "🔗";
+                  shareBtn.style.background = "#f0f0f0";
+                  shareBtn.style.color = "#333";
+                  shareBtn.disabled = false;
+                }, 2000);
+              } else {
+                shareBtn.textContent = "❌";
+                shareBtn.style.background = "#f56565";
+                shareBtn.style.color = "white";
+                setTimeout(() => {
+                  shareBtn.textContent = "🔗";
+                  shareBtn.style.background = "#f0f0f0";
+                  shareBtn.style.color = "#333";
+                  shareBtn.disabled = false;
+                }, 2000);
+              }
+            });
+          };
+        }
+      });
+    } catch (error) {
+      console.error('检查上传服务失败:', error);
+    }
 
     // 如果有遮罩，绑定点击揭示逻辑
     if (!allowNSFW) {
@@ -1373,6 +1467,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const { settings } = await chrome.storage.local.get("settings");
         const result = await uploadImageToService(message.imageData, message.fileName, settings);
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.action === "uploadImageToAlbum") {
+    (async () => {
+      try {
+        const { settings } = await chrome.storage.local.get("settings");
+        const result = await uploadImageToAlbum(message.imageUrl, message.prompt, settings);
         sendResponse(result);
       } catch (e) {
         sendResponse({ success: false, error: e.message });
@@ -1768,6 +1874,169 @@ async function uploadImageToService(imageData, fileName, settings) {
   }
 
   return { success: true, imageUrl: imageUrl };
+}
+
+/**
+ * 上传图片到相册（会过滤过期参数）
+ */
+async function uploadImageToAlbum(imageUrl, prompt, settings) {
+  // 获取激活的上传服务
+  const uploadServices = settings.imageUploadServices || [];
+  const activeService = uploadServices.find(service => service.isActive);
+  
+  if (!activeService) {
+    throw new Error("未配置或激活图片上传服务");
+  }
+
+  const { 
+    url: imageUploadUrl, 
+    key: imageUploadKey, 
+    authType: imageUploadAuthType, 
+    headerName: imageUploadHeaderName,
+    responsePath: imageUploadResponsePath, 
+    fieldName: imageUploadFieldName,
+    format: imageUploadFormat,
+    customParams: imageUploadCustomParams,
+    ignoreExpiration: imageUploadIgnoreExpiration
+  } = activeService;
+
+  // 将图片URL转换为blob
+  let blob;
+  if (imageUrl.startsWith('data:')) {
+    // Base64图片
+    const response = await fetch(imageUrl);
+    blob = await response.blob();
+  } else {
+    // 普通URL图片
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`无法下载图片: HTTP ${response.status}`);
+    }
+    blob = await response.blob();
+  }
+
+  // 创建FormData
+  const formData = new FormData();
+  formData.append(imageUploadFieldName || 'source', blob, 'album-image.png');
+
+  // 构建请求头
+  const headers = {};
+  
+  // 根据认证方式设置认证信息
+  if (imageUploadKey) {
+    const authType = imageUploadAuthType || 'header';
+    const headerName = imageUploadHeaderName || 'X-API-Key';
+    
+    switch (authType) {
+      case 'header':
+        headers[headerName] = imageUploadKey;
+        break;
+      case 'bearer':
+        headers["Authorization"] = `Bearer ${imageUploadKey}`;
+        break;
+      case 'param':
+        // 参数认证：将key添加到FormData中
+        formData.append('key', imageUploadKey);
+        break;
+    }
+  }
+
+  // 如果指定了响应格式，添加到FormData
+  const format = imageUploadFormat || 'json';
+  if (format !== 'json') {
+    formData.append('format', format);
+  }
+
+  // 添加自定义参数（过滤过期参数）
+  if (imageUploadCustomParams && typeof imageUploadCustomParams === 'object') {
+    // 定义常见的过期参数名
+    const expirationParams = ['expiration', 'expire', 'expires', 'ttl', 'lifetime', 'duration'];
+    
+    Object.entries(imageUploadCustomParams).forEach(([key, value]) => {
+      if (key && value !== undefined && value !== null && value !== '') {
+        // 如果启用了忽略过期参数选项，跳过过期相关参数
+        if (imageUploadIgnoreExpiration && expirationParams.some(param => 
+          key.toLowerCase().includes(param.toLowerCase())
+        )) {
+          console.log(`跳过过期参数: ${key} = ${value}`);
+          return;
+        }
+        
+        formData.append(key, String(value));
+        console.log(`添加相册上传参数: ${key} = ${value}`);
+      }
+    });
+  }
+
+  console.log("开始上传图片到相册:", {
+    服务名称: activeService.name,
+    上传端点: imageUploadUrl,
+    忽略过期参数: imageUploadIgnoreExpiration,
+    提示词: prompt
+  });
+
+  const uploadResponse = await fetch(imageUploadUrl, {
+    method: "POST",
+    headers: headers,
+    body: formData,
+  });
+
+  if (!uploadResponse.ok) {
+    let errorMsg = `HTTP ${uploadResponse.status}`;
+    try {
+      const errorData = await uploadResponse.json();
+      errorMsg = errorData.message || errorData.error || errorData.status_txt || errorData.msg || errorData.detail;
+      if (!errorMsg) {
+        const errorKeys = Object.keys(errorData);
+        if (errorKeys.length > 0) {
+          errorMsg = `服务器返回错误: ${JSON.stringify(errorData)}`;
+        } else {
+          errorMsg = `HTTP ${uploadResponse.status} - 未知错误`;
+        }
+      }
+    } catch (e) {
+      try {
+        const errorText = await uploadResponse.text();
+        errorMsg = errorText || `HTTP ${uploadResponse.status}`;
+      } catch (e2) {
+        errorMsg = `HTTP ${uploadResponse.status} - 无法解析错误信息`;
+      }
+    }
+    throw new Error("上传到相册失败: " + errorMsg);
+  }
+
+  let albumImageUrl;
+  
+  if (format === 'txt') {
+    // 纯文本响应，直接作为URL
+    albumImageUrl = await uploadResponse.text();
+    albumImageUrl = albumImageUrl.trim();
+  } else {
+    // JSON响应，按路径提取
+    const responseData = await uploadResponse.json();
+    console.log("相册上传响应:", responseData);
+
+    // 提取图片URL
+    albumImageUrl = getValueByPath(responseData, imageUploadResponsePath || 'image.url');
+    
+    if (!albumImageUrl) {
+      // 如果按配置路径找不到，尝试常见的路径
+      const commonPaths = ['image.url', 'data.url', 'url', 'link', 'image.image.url'];
+      for (const path of commonPaths) {
+        albumImageUrl = getValueByPath(responseData, path);
+        if (albumImageUrl) {
+          console.log(`在路径 ${path} 找到相册图片URL:`, albumImageUrl);
+          break;
+        }
+      }
+    }
+  }
+  
+  if (!albumImageUrl) {
+    throw new Error(`无法从响应中提取相册图片URL，路径: ${imageUploadResponsePath}`);
+  }
+
+  return { success: true, imageUrl: albumImageUrl };
 }
 
 /**

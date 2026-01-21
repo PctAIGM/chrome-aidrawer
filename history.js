@@ -17,6 +17,10 @@ async function loadHistory() {
     const response = await chrome.runtime.sendMessage({ action: "getHistory" });
     historyData = response.history || [];
     filteredData = [...historyData];
+    
+    // 检查上传服务并显示上传按钮
+    await checkUploadServiceAndShowButtons();
+    
     renderGallery();
   } catch (error) {
     console.error("加载历史记录失败:", error);
@@ -137,6 +141,7 @@ function createHistoryCard(item, allowNSFW) {
     <div class="card-actions">
       <button class="action-btn copy-btn" title="复制到剪贴板">复制</button>
       <button class="action-btn download-btn" title="下载图片">下载</button>
+      <button class="action-btn upload-btn" title="分享到相册" style="display: none;">🔗</button>
       <button class="action-btn delete-btn" title="删除">删除</button>
     </div>
   `;
@@ -177,6 +182,10 @@ function createHistoryCard(item, allowNSFW) {
   card.querySelector(".download-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     downloadImage(item);
+  });
+  card.querySelector(".upload-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    uploadImageToAlbum(item);
   });
   card.querySelector(".delete-btn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -441,6 +450,9 @@ function openModal(item) {
 
   const downloadBtn = document.getElementById("modalDownloadBtn");
   if (downloadBtn) downloadBtn.onclick = () => downloadImage(item);
+
+  const uploadBtn = document.getElementById("modalUploadBtn");
+  if (uploadBtn) uploadBtn.onclick = () => uploadImageToAlbum(item);
 }
 
 function closeModal() {
@@ -744,6 +756,58 @@ function handleImageError(img, type) {
     // 存储原始URL以便重试
     errorDiv.dataset.originalSrc = img.src;
     errorDiv.dataset.originalAlt = img.alt;
+  }
+}
+
+// 检查上传服务并显示上传按钮
+async function checkUploadServiceAndShowButtons() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const uploadServices = response.imageUploadServices || [];
+    const hasActiveUploadService = uploadServices.some(service => service.isActive);
+    
+    // 显示或隐藏所有上传按钮
+    const uploadButtons = document.querySelectorAll('.upload-btn');
+    uploadButtons.forEach(btn => {
+      btn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
+    });
+    
+    // 显示或隐藏模态框中的上传按钮
+    const modalUploadBtn = document.getElementById("modalUploadBtn");
+    if (modalUploadBtn) {
+      modalUploadBtn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
+    }
+  } catch (error) {
+    console.error("检查上传服务失败:", error);
+  }
+}
+
+// 上传图片到相册
+async function uploadImageToAlbum(item) {
+  const uploadBtn = event.target;
+  const originalText = uploadBtn.textContent;
+  
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = "上传中...";
+
+  try {
+    const result = await chrome.runtime.sendMessage({
+      action: 'uploadImageToAlbum',
+      imageUrl: item.imageUrl,
+      prompt: item.prompt
+    });
+
+    if (result.success) {
+      showNotification("图片已上传到相册！", "success");
+    } else {
+      throw new Error(result.error || '上传失败');
+    }
+  } catch (error) {
+    console.error('上传到相册失败:', error);
+    showNotification(error.message || '上传失败', "error");
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = originalText;
   }
 }
 

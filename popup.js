@@ -151,6 +151,9 @@ function setupEventListeners() {
   document.getElementById("imageFileInput").addEventListener("change", handleFileSelect);
   document.getElementById("uploadImageBtn").addEventListener("click", uploadImage);
   document.getElementById("removeImageBtn").addEventListener("click", removeSelectedImage);
+
+  // 提示词切换按钮
+  document.getElementById("togglePromptBtn").addEventListener("click", togglePrompt);
 }
 
 async function generateImage() {
@@ -284,6 +287,9 @@ function showResult(prompt) {
   resultImg.src = currentImageUrl;
 
   document.getElementById("resultPrompt").textContent = prompt;
+  
+  // 检查是否有上传服务，显示上传按钮
+  checkAndShowUploadButton();
 }
 
 function showError(message) {
@@ -525,4 +531,75 @@ function showNotification(message, type = "success") {
   document.body.appendChild(notification);
 
   setTimeout(() => notification.remove(), 2000);
+}
+
+// 切换提示词显示/隐藏
+function togglePrompt() {
+  const promptElement = document.getElementById("resultPrompt");
+  const toggleBtn = document.getElementById("togglePromptBtn");
+  
+  if (promptElement.style.display === "none") {
+    promptElement.style.display = "block";
+    toggleBtn.textContent = "隐藏提示词";
+  } else {
+    promptElement.style.display = "none";
+    toggleBtn.textContent = "显示提示词";
+  }
+}
+
+// 检查并显示上传按钮
+async function checkAndShowUploadButton() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const uploadServices = response.imageUploadServices || [];
+    const hasActiveUploadService = uploadServices.some(service => service.isActive);
+    
+    const uploadBtn = document.getElementById("uploadToAlbumBtn");
+    if (hasActiveUploadService && currentImageUrl) {
+      if (uploadBtn) {
+        uploadBtn.style.display = "inline-flex";
+        uploadBtn.onclick = () => uploadCurrentImageToAlbum();
+      }
+    } else {
+      if (uploadBtn) {
+        uploadBtn.style.display = "none";
+      }
+    }
+  } catch (error) {
+    console.error("检查上传服务失败:", error);
+  }
+}
+
+// 上传当前图片到相册
+async function uploadCurrentImageToAlbum() {
+  if (!currentImageUrl) {
+    showNotification("没有可上传的图片", "error");
+    return;
+  }
+
+  const uploadBtn = document.getElementById("uploadToAlbumBtn");
+  const originalText = uploadBtn.textContent;
+  
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = "上传中...";
+
+  try {
+    const result = await chrome.runtime.sendMessage({
+      action: 'uploadImageToAlbum',
+      imageUrl: currentImageUrl,
+      prompt: document.getElementById("resultPrompt").textContent
+    });
+
+    if (result.success) {
+      showNotification("图片已上传到相册！", "success");
+    } else {
+      throw new Error(result.error || '上传失败');
+    }
+  } catch (error) {
+    console.error('上传到相册失败:', error);
+    showNotification(error.message || '上传失败', "error");
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = originalText;
+  }
 }

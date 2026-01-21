@@ -1710,6 +1710,7 @@ function showUploadServiceForm(service = null) {
     document.getElementById("uploadServiceResponsePath").value = service.responsePath || "image.url";
     document.getElementById("uploadServiceFieldName").value = service.fieldName || "source";
     document.getElementById("uploadServiceFormat").value = service.format || "json";
+    document.getElementById("uploadServiceIgnoreExpiration").checked = !!service.ignoreExpiration;
 
     // 加载自定义参数
     if (service.customParams) {
@@ -1752,6 +1753,9 @@ function clearUploadServiceForm() {
   const formatSelect = document.getElementById("uploadServiceFormat");
   if (formatSelect) formatSelect.value = "json";
 
+  const ignoreExpirationCheckbox = document.getElementById("uploadServiceIgnoreExpiration");
+  if (ignoreExpirationCheckbox) ignoreExpirationCheckbox.checked = false;
+
   // 清除自定义参数
   const paramsContainer = document.getElementById("uploadCustomParamsList");
   if (paramsContainer) paramsContainer.innerHTML = "";
@@ -1766,6 +1770,7 @@ async function saveUploadService() {
   const responsePath = document.getElementById("uploadServiceResponsePath").value.trim() || "image.url";
   const fieldName = document.getElementById("uploadServiceFieldName").value.trim() || "source";
   const format = document.getElementById("uploadServiceFormat").value || "json";
+  const ignoreExpiration = document.getElementById("uploadServiceIgnoreExpiration").checked;
 
   // 收集自定义参数
   const customParams = {};
@@ -1795,6 +1800,7 @@ async function saveUploadService() {
       responsePath,
       fieldName,
       format,
+      ignoreExpiration,
       customParams
     };
 

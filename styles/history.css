@@ -547,6 +547,16 @@ header h1 {
     flex: 1;
 }
 
+.btn.icon-only {
+    flex: 0 0 auto;
+    width: 40px;
+    padding: 10px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
 .notification {
     position: fixed;
     top: 20px;

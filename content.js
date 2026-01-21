@@ -193,7 +193,7 @@ function createModal({ title, content, prompt, buttons, debugData }) {
     <button id="${btn.id}" style="
       padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s;
       ${btn.class === "primary" ? "background: #667eea; color: white; border: none;" : "background: #f3f4f6; color: #333; border: 1px solid #ddd;"}
-    ">${btn.text}</button>
+    " ${btn.title ? `title="${btn.title}"` : ""}>${btn.text}</button>
   `,
     )
     .join("");
@@ -268,6 +268,14 @@ async function showResultModal(imageUrl, prompt, debugData) {
     { id: "ai-draw-download", text: "下载", class: "secondary" },
     { id: "ai-draw-close", text: "关闭", class: "secondary" },
   ];
+  
+  // 检查是否有上传服务，添加分享按钮
+  const uploadServices = settings?.imageUploadServices || [];
+  const hasActiveUploadService = uploadServices.some(service => service.isActive);
+  if (hasActiveUploadService) {
+    buttons.splice(2, 0, { id: "ai-draw-share", text: "🔗", class: "secondary", title: "分享到相册" });
+  }
+  
   if (debugData) {
     buttons.unshift({
       id: "ai-draw-debug",
@@ -412,6 +420,56 @@ async function showResultModal(imageUrl, prompt, debugData) {
         btn.textContent = "❌ 失败";
         btn.disabled = false;
         setTimeout(() => btn.textContent = originalText, 2000);
+      });
+    };
+  }
+
+  // 分享按钮绑定
+  const shareBtn = document.getElementById("ai-draw-share");
+  if (shareBtn) {
+    shareBtn.onclick = () => {
+      const btn = shareBtn;
+      const originalText = btn.textContent;
+      btn.textContent = "⏳";
+      btn.disabled = true;
+
+      chrome.runtime.sendMessage({
+        action: "uploadImageToAlbum",
+        imageUrl: imageUrl,
+        prompt: prompt
+      }).then((res) => {
+        if (res && res.success) {
+          btn.textContent = "✅";
+          btn.style.background = "#48bb78";
+          btn.style.color = "white";
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = "";
+            btn.style.color = "";
+            btn.disabled = false;
+          }, 2000);
+        } else {
+          btn.textContent = "❌";
+          btn.style.background = "#f56565";
+          btn.style.color = "white";
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = "";
+            btn.style.color = "";
+            btn.disabled = false;
+          }, 2000);
+        }
+      }).catch((error) => {
+        console.error('分享失败:', error);
+        btn.textContent = "❌";
+        btn.style.background = "#f56565";
+        btn.style.color = "white";
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = "";
+          btn.style.color = "";
+          btn.disabled = false;
+        }, 2000);
       });
     };
   }
