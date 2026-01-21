@@ -273,6 +273,30 @@ function setupEventListeners() {
     });
   }
 
+  // multipart模式切换逻辑
+  const multipartToggle = document.getElementById("providerUseMultipart");
+  const multipartConfig = document.getElementById("multipartConfig");
+  if (multipartToggle && multipartConfig) {
+    multipartToggle.addEventListener("change", (e) => {
+      multipartConfig.style.display = e.target.checked ? "block" : "none";
+    });
+  }
+
+  // 服务类型切换逻辑
+  const serviceTypeRadios = document.querySelectorAll('input[name="serviceType"]');
+  const editModeConfig = document.getElementById("editModeConfig");
+  if (serviceTypeRadios && editModeConfig) {
+    serviceTypeRadios.forEach(radio => {
+      radio.addEventListener("change", (e) => {
+        const isEdit = e.target.value === "edit";
+        editModeConfig.style.display = isEdit ? "block" : "none";
+        if (isEdit) {
+          editModeConfig.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
+    });
+  }
+
   // 自动保存图片切换逻辑
   const autoSaveToggle = document.getElementById("autoSaveImages");
   const savePathGroup = document.getElementById("savePathGroup");
@@ -507,6 +531,28 @@ function showProviderForm(provider = null) {
     );
     if (serviceTypeRadio) serviceTypeRadio.checked = true;
 
+    // 显示/隐藏改图模式配置
+    const editModeConfig = document.getElementById("editModeConfig");
+    if (editModeConfig) {
+      editModeConfig.style.display = serviceType === "edit" ? "block" : "none";
+    }
+
+    // 设置multipart选项
+    const useMultipartCheckbox = document.getElementById("providerUseMultipart");
+    const multipartConfig = document.getElementById("multipartConfig");
+    if (useMultipartCheckbox) {
+      useMultipartCheckbox.checked = !!provider.useMultipart;
+      if (multipartConfig) {
+        multipartConfig.style.display = provider.useMultipart ? "block" : "none";
+      }
+    }
+
+    // 设置图片字段名
+    const imageFieldNameInput = document.getElementById("providerImageFieldName");
+    if (imageFieldNameInput) {
+      imageFieldNameInput.value = provider.imageFieldName || "image";
+    }
+
     if (provider.customHeaders) {
       Object.entries(provider.customHeaders).forEach(([k, v]) => {
         addHeaderRow(k, v);
@@ -603,6 +649,34 @@ function clearProviderForm() {
   const pollInterval = document.getElementById("providerPollInterval");
   if (pollInterval) pollInterval.value = "2";
 
+  // 清理multipart选项
+  const useMultipartCheckbox = document.getElementById("providerUseMultipart");
+  const multipartConfig = document.getElementById("multipartConfig");
+  if (useMultipartCheckbox) {
+    useMultipartCheckbox.checked = false;
+    if (multipartConfig) {
+      multipartConfig.style.display = "none";
+    }
+  }
+
+  // 重置图片字段名
+  const imageFieldNameInput = document.getElementById("providerImageFieldName");
+  if (imageFieldNameInput) {
+    imageFieldNameInput.value = "image";
+  }
+
+  // 隐藏改图模式配置
+  const editModeConfig = document.getElementById("editModeConfig");
+  if (editModeConfig) {
+    editModeConfig.style.display = "none";
+  }
+
+  // 重置服务类型为画图
+  const generateRadio = document.querySelector('input[name="serviceType"][value="generate"]');
+  if (generateRadio) {
+    generateRadio.checked = true;
+  }
+
   const containerParams = document.getElementById("customParamsList");
   const containerHeaders = document.getElementById("customHeadersList");
   if (containerParams) containerParams.innerHTML = "";
@@ -631,6 +705,10 @@ async function saveProvider() {
   const serviceType =
     document.querySelector('input[name="serviceType"]:checked')?.value ||
     "generate";
+
+  // 获取multipart配置
+  const useMultipart = document.getElementById("providerUseMultipart").checked;
+  const imageFieldName = document.getElementById("providerImageFieldName").value.trim() || "image";
 
   if (!name || !endpoint) {
     showStatus("请输入服务商名称和端点", "error");
@@ -693,6 +771,8 @@ async function saveProvider() {
       customHeaders,
       customParams,
       asyncMode,
+      useMultipart,
+      imageFieldName,
       ...(asyncMode
         ? { jobIdPath, pollUrl, statusPath, successValue, pollInterval }
         : {}),

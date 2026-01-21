@@ -278,6 +278,9 @@ async function handleGenerateImage(
       statusPath: provider.statusPath,
       successValue: provider.successValue,
       pollInterval: provider.pollInterval,
+      // multipart模式参数
+      useMultipart: provider.useMultipart,
+      imageFieldName: provider.imageFieldName,
     };
 
     const { requestBody, responseData, result } = await generateWithCustomAPI(
@@ -428,56 +431,134 @@ async function generateWithCustomAPI(prompt, config) {
     statusPath,
     successValue,
     pollInterval,
+    useMultipart, // 新增：是否使用multipart/form-data格式
+    imageFieldName, // 新增：图片字段名
   } = config;
 
-  const requestBody = {};
+  let requestBody = {};
+  let isMultipartRequest = false;
+  let formData = null;
 
-  // 处理自定义参数，支持字段类型映射和嵌套键 (如 input.prompt)
-  for (const [key, value] of Object.entries(customParams)) {
-    let finalValue;
-    // 检查是否是新格式（带fieldType）
-    if (value && typeof value === "object" && value.fieldType) {
-      if (value.fieldType === "prompt") {
-        // 提示词字段
-        finalValue = prompt;
-      } else if (value.fieldType === "imageUrl" && imageUrl) {
-        // 图片URL字段（仅改图时）
-        finalValue = imageUrl;
+  // 检查是否需要使用multipart格式（改图且配置了useMultipart）
+  if (operationType === "edit" && imageUrl && useMultipart) {
+    isMultipartRequest = true;
+    formData = new FormData();
+    
+    console.log("使用multipart/form-data格式上传图片");
+    
+    try {
+      // 将图片URL转换为Blob
+      let imageBlob;
+      if (imageUrl.startsWith('data:')) {
+        // Base64图片
+        const response = await fetch(imageUrl);
+        imageBlob = await response.blob();
       } else {
-        // 其他情况使用value的值
-        finalValue = value.value;
+        // 普通URL图片
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`无法下载图片: HTTP ${response.status}`);
+        }
+        imageBlob = await response.blob();
       }
-    } else {
-      // 旧格式或普通值
-      finalValue = value;
+      
+      // 添加图片文件到FormData
+      formData.append(imageFieldName || 'image', imageBlob, 'image.png');
+      
+      // 添加提示词
+      formData.append('prompt', prompt);
+      
+      // 处理其他自定义参数
+      for (const [key, value] of Object.entries(customParams || {})) {
+        let finalValue;
+        
+        if (value && typeof value === "object" && value.fieldType) {
+          if (value.fieldType === "prompt") {
+            // 提示词已经添加过了，跳过
+            continue;
+          } else if (value.fieldType === "imageUrl") {
+            // 图片已经添加过了，跳过
+            continue;
+          } else {
+            finalValue = value.value;
+          }
+        } else {
+          finalValue = value;
+        }
+        
+        // 处理随机数
+        if (finalValue === "__RANDOM__") {
+          finalValue = Math.floor(Math.random() * 2147483647);
+        }
+        
+        if (finalValue !== undefined && finalValue !== null && finalValue !== '') {
+          formData.append(key, String(finalValue));
+        }
+      }
+      
+      // 默认参数
+      if (!customParams?.n && !customParams?.N) {
+        formData.append('n', '1');
+      }
+      
+    } catch (error) {
+      console.error("准备multipart请求失败:", error);
+      throw new Error(`图片处理失败: ${error.message}`);
+    }
+  } else {
+    // 使用JSON格式（原有逻辑）
+    // 处理自定义参数，支持字段类型映射和嵌套键 (如 input.prompt)
+    for (const [key, value] of Object.entries(customParams || {})) {
+      let finalValue;
+      // 检查是否是新格式（带fieldType）
+      if (value && typeof value === "object" && value.fieldType) {
+        if (value.fieldType === "prompt") {
+          // 提示词字段
+          finalValue = prompt;
+        } else if (value.fieldType === "imageUrl" && imageUrl) {
+          // 图片URL字段（仅改图时）
+          finalValue = imageUrl;
+        } else {
+          // 其他情况使用value的值
+          finalValue = value.value;
+        }
+      } else {
+        // 旧格式或普通值
+        finalValue = value;
+      }
+
+      // 处理随机数类型：__RANDOM__ 标记替换为实际随机数
+      if (finalValue === "__RANDOM__") {
+        finalValue = Math.floor(Math.random() * 2147483647); // 0 到 2^31-1 的随机整数
+      }
+
+      // 使用 setValueByPath 支持嵌套 (如 "input.prompt" -> {input: {prompt: "..."}})
+      setValueByPath(requestBody, key, finalValue);
     }
 
-    // 处理随机数类型：__RANDOM__ 标记替换为实际随机数
-    if (finalValue === "__RANDOM__") {
-      finalValue = Math.floor(Math.random() * 2147483647); // 0 到 2^31-1 的随机整数
+    // 如果没有配置提示词字段，使用默认的prompt字段
+    const hasPromptField = Object.values(customParams || {}).some(
+      (v) => v && typeof v === "object" && v.fieldType === "prompt",
+    );
+    if (!hasPromptField) {
+      requestBody.prompt = prompt;
     }
 
-    // 使用 setValueByPath 支持嵌套 (如 "input.prompt" -> {input: {prompt: "..."}})
-    setValueByPath(requestBody, key, finalValue);
-  }
-
-  // 如果没有配置提示词字段，使用默认的prompt字段
-  const hasPromptField = Object.values(customParams).some(
-    (v) => v && typeof v === "object" && v.fieldType === "prompt",
-  );
-  if (!hasPromptField) {
-    requestBody.prompt = prompt;
-  }
-
-  // 默认添加 n:1 （如果还没有）
-  if (!requestBody.n && !requestBody.N) {
-    requestBody.n = 1;
+    // 默认添加 n:1 （如果还没有）
+    if (!requestBody.n && !requestBody.N) {
+      requestBody.n = 1;
+    }
   }
 
   const headers = {
-    "Content-Type": "application/json",
     ...customHeaders,
   };
+
+  // 根据请求类型设置Content-Type
+  if (!isMultipartRequest) {
+    headers["Content-Type"] = "application/json";
+  }
+  // 注意：multipart/form-data的Content-Type会由浏览器自动设置，包含boundary
 
   if (apiKey) {
     const sanitizedKey = sanitizeHeaderValue(apiKey);
@@ -491,16 +572,23 @@ async function generateWithCustomAPI(prompt, config) {
   }
 
   console.log("发送API请求到:", endpoint);
-  console.log("请求体:", requestBody);
+  console.log("请求格式:", isMultipartRequest ? "multipart/form-data" : "application/json");
+  if (isMultipartRequest) {
+    console.log("FormData字段:", Array.from(formData.keys()));
+  } else {
+    console.log("请求体:", requestBody);
+  }
 
   let responseData = null;
 
   // 1. 发送初始请求
-  const response = await fetch(endpoint, {
+  const fetchOptions = {
     method: "POST",
     headers: headers,
-    body: JSON.stringify(requestBody),
-  });
+    body: isMultipartRequest ? formData : JSON.stringify(requestBody),
+  };
+
+  const response = await fetch(endpoint, fetchOptions);
 
   if (!response.ok) {
     let errorMsg = `HTTP ${response.status}`;
@@ -509,12 +597,13 @@ async function generateWithCustomAPI(prompt, config) {
       errorMsg =
         responseData.message ||
         responseData.detail ||
+        responseData.error?.message ||
         JSON.stringify(responseData);
     } catch (e) { }
     const err = new Error(errorMsg);
     err.debugData = {
       providerName: config.name,
-      request: requestBody,
+      request: isMultipartRequest ? "FormData (multipart)" : requestBody,
       response: responseData,
     };
     throw err;
@@ -540,7 +629,7 @@ async function generateWithCustomAPI(prompt, config) {
       attempts++;
 
       console.log(`轮询第 ${attempts} 次: ${actualPollUrl}`);
-      const pollResponse = await fetch(actualPollUrl, { headers });
+      const pollResponse = await fetch(actualPollUrl, { headers: { Authorization: headers.Authorization } });
       if (!pollResponse.ok) continue; // 忽略临时错误
 
       const pollData = await pollResponse.json();
@@ -601,7 +690,7 @@ async function generateWithCustomAPI(prompt, config) {
     const err = new Error("API响应中未找到图片字段");
     err.debugData = {
       providerName: config.name,
-      request: requestBody,
+      request: isMultipartRequest ? "FormData (multipart)" : requestBody,
       response: responseData,
     };
     throw err;
@@ -612,7 +701,7 @@ async function generateWithCustomAPI(prompt, config) {
   }
 
   return {
-    requestBody,
+    requestBody: isMultipartRequest ? "FormData (multipart)" : requestBody,
     responseData,
     result: { success: true, imageUrl: finalImageUrl },
   };
@@ -1233,11 +1322,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       const tabId = activeTab?.id;
 
+      let imageUrl = message.imageUrl;
+      
+      // 如果是使用本地文件的multipart请求
+      if (message.useLocalFile && message.imageData) {
+        // 直接使用base64数据作为imageUrl
+        imageUrl = message.imageData;
+        console.log("使用本地文件数据进行改图，文件名:", message.fileName);
+      }
+
       await handleGenerateImage(
         message.prompt,
         provider,
         tabId,
-        message.imageUrl,
+        imageUrl,
         "edit",
       );
       sendResponse({ success: true });

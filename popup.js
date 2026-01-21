@@ -77,10 +77,40 @@ async function checkUploadServiceAvailability() {
     const uploadServices = response.imageUploadServices || [];
     const hasActiveUploadService = uploadServices.some(service => service.isActive);
     
+    // 获取当前选择的服务商配置
+    const select = document.getElementById("provider");
+    const providerId = select.value;
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+    const useMultipart = currentProvider?.useMultipart;
+    
     const uploadTab = document.getElementById("uploadTab");
-    if (hasActiveUploadService) {
+    const uploadImageBtn = document.getElementById("uploadImageBtn");
+    
+    if (useMultipart) {
+      // multipart接口：总是显示上传选项卡，不需要图床
       uploadTab.style.display = "block";
+      if (uploadImageBtn) {
+        uploadImageBtn.style.display = "none"; // 隐藏上传到图床按钮
+      }
+      // 更新提示文字
+      const hint = document.querySelector("#uploadSection .hint");
+      if (hint) {
+        hint.textContent = "multipart接口直接使用本地文件，无需上传到图床";
+      }
+    } else if (hasActiveUploadService) {
+      // 非multipart接口：需要图床服务
+      uploadTab.style.display = "block";
+      if (uploadImageBtn) {
+        uploadImageBtn.style.display = "block"; // 显示上传到图床按钮
+      }
+      // 恢复原始提示文字
+      const hint = document.querySelector("#uploadSection .hint");
+      if (hint) {
+        hint.textContent = "改图服务需要提供图片";
+      }
     } else {
+      // 没有图床服务且不是multipart
       uploadTab.style.display = "none";
       // 如果没有上传服务，强制切换到URL输入模式
       switchToUrlTab();
@@ -142,11 +172,18 @@ async function generateImage() {
 
   // 如果是改图服务商，检查图片
   let imageUrl = null;
+  let imageFile = null;
   if (serviceType === "edit") {
+    // 获取当前服务商配置，检查是否使用multipart
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+    const useMultipart = currentProvider?.useMultipart;
+
     const urlTab = document.getElementById("urlTab");
     const isUrlMode = urlTab.classList.contains("active");
     
-    console.log("改图模式 - URL模式:", isUrlMode, "上传的图片URL:", uploadedImageUrl);
+    console.log("改图模式 - URL模式:", isUrlMode, "使用multipart:", useMultipart, "上传的图片URL:", uploadedImageUrl);
     
     if (isUrlMode) {
       imageUrl = document.getElementById("imageUrlInput").value.trim();
@@ -157,18 +194,29 @@ async function generateImage() {
       console.log("使用URL模式，图片URL:", imageUrl);
     } else {
       // 上传模式
-      if (!uploadedImageUrl) {
-        // 检查是否选择了文件但还没上传
-        const fileInput = document.getElementById("imageFileInput");
-        if (fileInput.files.length > 0) {
-          showError("请先点击'上传到图床'按钮上传选择的图片");
+      const fileInput = document.getElementById("imageFileInput");
+      
+      if (useMultipart && fileInput.files.length > 0) {
+        // multipart接口：直接使用本地文件
+        imageFile = fileInput.files[0];
+        console.log("使用multipart模式，直接使用本地文件:", imageFile.name);
+      } else if (!useMultipart && uploadedImageUrl) {
+        // 非multipart接口：使用上传后的URL
+        imageUrl = uploadedImageUrl;
+        console.log("使用非multipart模式，图片URL:", imageUrl);
+      } else {
+        // 错误情况
+        if (useMultipart) {
+          showError("请先选择图片文件");
         } else {
-          showError("请先选择并上传图片");
+          if (fileInput.files.length > 0) {
+            showError("请先点击'上传到图床'按钮上传选择的图片");
+          } else {
+            showError("请先选择并上传图片");
+          }
         }
         return;
       }
-      imageUrl = uploadedImageUrl;
-      console.log("使用上传模式，图片URL:", imageUrl);
     }
   }
 
@@ -180,12 +228,26 @@ async function generateImage() {
 
     // 发送生成/改图消息
     if (serviceType === "edit") {
-      await chrome.runtime.sendMessage({
-        action: "editImage",
-        prompt: prompt,
-        imageUrl: imageUrl,
-        providerId: providerId,
-      });
+      if (imageFile) {
+        // 对于multipart接口，发送文件数据
+        const base64 = await fileToBase64(imageFile);
+        await chrome.runtime.sendMessage({
+          action: "editImage",
+          prompt: prompt,
+          imageData: base64,
+          fileName: imageFile.name,
+          providerId: providerId,
+          useLocalFile: true,
+        });
+      } else {
+        // 对于非multipart接口，发送URL
+        await chrome.runtime.sendMessage({
+          action: "editImage",
+          prompt: prompt,
+          imageUrl: imageUrl,
+          providerId: providerId,
+        });
+      }
     } else {
       await chrome.runtime.sendMessage({
         action: "generateImage",

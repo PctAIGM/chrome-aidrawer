@@ -102,6 +102,25 @@
                                     </div>
                                 </div>
 
+                                <!-- 改图模式配置 -->
+                                <div id="editModeConfig" class="form-group full-width" style="display: none;">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="providerUseMultipart" />
+                                        <span>📤 使用 multipart/form-data 格式上传图片</span>
+                                    </label>
+                                    <div id="multipartConfig" class="form-row" style="margin-top: 8px; display: none;">
+                                        <div class="form-group">
+                                            <label for="providerImageFieldName">图片字段名</label>
+                                            <input
+                                                type="text"
+                                                id="providerImageFieldName"
+                                                placeholder="image"
+                                                value="image"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="form-group full-width">
                                     <label for="providerEndpoint">API Endpoint</label>
                                     <input
