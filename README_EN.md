@@ -1,138 +1,177 @@
-# AI Drawing Assistant - Chrome Extension
+# AI Drawer - Chrome Extension
 
-A powerful Chrome browser extension that allows you to generate AI images by right-clicking on selected text, with image editing capabilities.
+A powerful Chrome browser extension that generates AI images from selected text via right-click menu, supporting image editing and multiple save options.
 
 ## Features
 
-- **Right-click Menu Drawing** - Select text on any webpage, right-click and choose "AI Drawing Assistant" to generate images
-- **Image Editing** - Right-click on images or selected text to edit images with various AI services
-- **Image Upload Service** - Configure image upload relay services to solve server-side image URL download issues
-- **Keyboard Shortcuts** - Use Ctrl+Shift+D for quick drawing
-- **Multiple API Support** - Supports OpenAI DALL-E, Stability AI, Replicate, and other APIs
-- **History Records** - Automatically saves the last 100 drawing records
-- **Multiple Save Options** - Copy to clipboard or download images
-- **Flexible Configuration** - Customize API keys, model parameters, and more
+### 🎨 Image Generation
+- **Right-click to draw** - Select text on a webpage, right-click, and choose "AI Drawer" to generate images
+- **Keyboard shortcut** - Use `Ctrl+Shift+D` (Mac: `Command+Shift+D`) for quick drawing
+- **Multiple providers** - Support for OpenAI DALL-E, Stability AI, Replicate, and more
+
+### ✏️ Image Editing
+- **Edit from image** - Right-click any image on a webpage to edit it
+- **Upload local image** - Upload local images for editing when no image is available
+- **Flexible prompts** - Enter editing instructions like "change background to blue" or "add a cat"
+
+### 💾 Save & Manage
+- **Copy to clipboard** - One-click copy of generated images
+- **Download locally** - Save images to download directory
+- **Auto-save** - Configure auto-save to a specific folder
+- **Share to album** - Share images to image hosting services
+- **History** - Automatically save up to 100 drawing records with search and batch export
+
+### ⚙️ Advanced Configuration
+- **Multi-API** - Configure multiple image generation/editing providers
+- **Custom API** - Connect to any compatible AI image API
+- **Async polling** - Support for async task APIs (like Replicate)
+- **Multipart upload** - Support multipart/form-data for image editing
+- **Templates** - Built-in API templates and custom template management
+
+### 🔄 Data Sync
+- **WebDAV sync** - Sync configuration to WebDAV server
+- **Encrypted export** - AES-GCM encrypted export to protect API keys
+- **Import config** - Support importing encrypted or plain-text configs
 
 ## Installation
 
-1. Open Chrome browser and navigate to chrome://extensions/
-2. Enable "Developer mode" in the top right corner
-3. Click "Load unpacked"
-4. Select the chrome-drawer plugin folder
-5. After successful installation, the plugin icon will appear in the toolbar
+1. Open Chrome browser and visit `chrome://extensions/`
+2. Enable "Developer mode" in the top right
+3. Click "Load unpacked extension"
+4. Select the `chrome-aidrawer` folder
+5. The extension icon will appear in the toolbar
 
-## Usage Guide
+## Usage
 
-### Basic Usage
+### Basic Drawing
 
-1. Select text on a webpage that you want to generate an image from
-2. Right-click on the selected text and choose "AI Drawing Assistant" → "Generate image from selected content"
+1. Select the text you want to generate an image from
+2. Right-click the selected text, choose "AI Drawer" → "Generate image from selection"
 3. Wait for AI to generate the image
-4. Once completed, you can copy or download the image
+4. Preview, copy, or download the generated image
 
-### Image Editing Feature
+### Image Editing
 
-1. **Right-click Image Editing**:
-   - Right-click on an image on a webpage
-   - Select "✏️ Edit with XXX"
-   - Enter editing prompt (e.g., "change background to blue", "add a cat", etc.)
-   - Click "Start Editing"
+**Method 1: Edit from webpage image**
+1. Right-click an image on a webpage
+2. Choose "✏️ Edit with [provider name]"
+3. Enter your editing prompt
+4. Click "Start editing"
 
-2. **Upload Image Editing**:
-   - Right-click on selected text and choose an editing option
-   - In the popup dialog, select a local image file
-   - Click "Upload Image" and wait for upload completion
-   - Enter editing prompt and start editing
+**Method 2: Upload local image**
+1. Right-click selected text or page空白处
+2. Choose "✏️ Edit with [provider name]"
+3. Click "Choose image" in the dialog to upload
+4. Enter your editing prompt
+5. Click "Start editing"
 
 ### Configure Image Upload Service
 
-If you encounter "server cannot download image" issues during editing, configure an image upload service:
+Configure image upload service for:
+- Sharing images to image hosting
+- Scenarios where server cannot download image URLs
 
-1. Find the "Image Upload Service" section in settings
-2. Configure upload endpoint (e.g., `https://api.example.com/upload`)
-3. Set API key (optional)
-4. Configure response path (e.g., `data.url`)
-5. Set file field name (usually `file`)
-6. Click "Test Upload" to verify configuration
+Configuration steps:
+1. Open extension options page
+2. Find "Image Upload Service" section
+3. Click "Add Upload Service"
+4. Configure endpoint, authentication, response path, etc.
+5. Click "Test Connection" to verify
+6. Save and start using
+
+### Configure API
+
+1. Click extension icon and choose "API Settings"
+2. Add AI provider (support generation and editing types)
+3. Enter API key and endpoint URL
+4. Configure request parameters and headers (optional)
+5. Click "Save Settings"
+6. Click "Test Connection" to verify
 
 ### Keyboard Shortcuts
 
-- Windows/Linux: Ctrl+Shift+D
-- Mac: Command+Shift+D
+- **Windows/Linux**: `Ctrl+Shift+D`
+- **Mac**: `Command+Shift+D`
 
-### API Configuration
-
-1. Click the plugin icon and select "API Settings"
-2. Add AI service providers (supports both drawing and editing types)
-3. Enter your API key and endpoint
-4. Configure custom parameters and request headers
-5. Click "Save Settings"
-6. Click "Test Connection" to verify configuration
+Shortcut can be modified in Chrome extension shortcuts page.
 
 ## File Structure
 
 ```
-chrome-drawer/
-├── manifest.json          # Plugin configuration
-├── background.js         # Background script
-├── content.js            # Content script
-├── options.html          # API configuration page
-├── options.js            # Configuration logic
-├── edit-dialog.html      # Image editing dialog page
-├── edit-dialog.js        # Image editing dialog logic
-├── history.html          # History page
-├── history.js            # History logic
-├── popup.html            # Popup page
-├── popup.js              # Popup logic
-├── icons/                # Plugin icons
-├── styles/               # Style files
-└── lib/                  # Third-party libraries
+chrome-aidrawer/
+├── manifest.json          # Extension manifest
+├── background.js          # Background script (API requests, history management)
+├── content.js             # Content script (page interaction, result display)
+├── options.html           # API settings page
+├── options.js             # Settings logic (providers, templates, WebDAV)
+├── popup.html             # Popup page
+├── popup.js               # Popup logic
+├── edit-dialog.html       # Edit dialog page
+├── edit-dialog.js         # Edit dialog logic
+├── history.html           # History page
+├── history.js             # History logic
+├── icons/                 # Extension icons
+├── styles/                # Style files
+│   ├── history.css
+│   ├── options.css
+│   └── popup.css
+└── lib/                   # Third-party libraries
+    └── jszip.min.js
 ```
 
 ## Supported APIs
 
-### Drawing Services
-- OpenAI DALL-E (DALL-E 3 recommended)
+### Generation Services
+- OpenAI DALL-E 2/3
 - Stability AI (Stable Diffusion)
-- Replicate (Open source models)
-- Other compatible API services
+- Replicate (Open models like SDXL, FLUX)
+- NewAPI and similar platforms
+- Any compatible REST API
 
-### Image Editing Services
+### Editing Services
 - OpenAI DALL-E Edit
 - Stability AI Image-to-Image
+- Replicate Edit API
 - Custom editing APIs
-- Supports asynchronous polling mode
+- Async polling mode support
 
 ### Image Upload Services
 - Generic file upload APIs
-- Image hosting services
+- Image hosting services (SM.MS, ImgBB, etc.)
 - Cloud storage services
-- Self-hosted upload services
+- Custom upload services
 
-## Important Notes
+## Notes
 
-1. Valid API keys are required
-2. Using AI services may incur costs
-3. Some APIs may require proxy access
-4. Recommend testing API connections first
-5. Image editing features require APIs that support image editing
-6. Image upload services need to support Cross-Origin Resource Sharing (CORS)
+1. **API Key Security**
+   - Regularly export encrypted backup configs
+   - Don't share API keys with others
+
+2. **Usage Costs**
+   - AI services may incur costs, check provider billing
+   - Some APIs may require proxy access
+
+3. **Feature Limits**
+   - Editing requires APIs that support image editing
+   - Upload services need CORS support
+   - History storage has Chrome extension quota limits
+
+4. **Debugging**
+   - Click "Debug" on failure to view request/response details
+   - Test connection before regular use
 
 ## Changelog
 
 ### v2.0.0
-- ✨ Added image editing feature with support for editing existing images
-- 🔧 Added image upload service configuration to solve server-side image download issues
-- 🎨 Optimized user interface with file selection and upload support
-- 🐛 Fixed multiple known issues
+- ✨ Added image editing feature
+- ?? Added image upload service configuration
+- ✨ Added WebDAV sync feature
+- ✨ Added encrypted config export
+- ✨ Added API template management
+- 🎨 Improved UI with file selection and upload support
+- 🐛 Fixed various known issues
 
 ### v1.0.0
-- 🎉 Basic drawing functionality
-- ⚙️ Multiple API support
-- 📚 History records feature
-
-Made with love for AI art enthusiasts
-
----
-
-**中文版本请查看 [README.md](README.md)**
+- 🎉 Basic image generation
+- ⚙️ Multi-API support
+- 📚 History feature
