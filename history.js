@@ -83,21 +83,21 @@ function createHistoryCard(item, allowNSFW) {
     imageHtml = `
       <div class="card-image dual-image">
         <div class="image-container original">
-          <img src="${item.originalImageUrl}" alt="原图" loading="lazy" onerror="handleImageError(this, 'original')">
+          <img src="${item.originalImageUrl}" alt="原图" loading="lazy" data-error-type="original">
           <div class="image-error" style="display: none;">
             <div class="error-icon">🖼️</div>
             <div class="error-text">原图已失效</div>
-            <button class="retry-btn" onclick="retryLoadImage(this)">重试</button>
+            <button class="retry-btn" data-retry-type="card">重试</button>
           </div>
           <span class="image-label">原图</span>
         </div>
         <div class="arrow">→</div>
         <div class="image-container result">
-          <img src="${item.imageUrl}" alt="改图结果" loading="lazy" onerror="handleImageError(this, 'result')">
+          <img src="${item.imageUrl}" alt="改图结果" loading="lazy" data-error-type="result">
           <div class="image-error" style="display: none;">
             <div class="error-icon">🖼️</div>
             <div class="error-text">图片已失效</div>
-            <button class="retry-btn" onclick="retryLoadImage(this)">重试</button>
+            <button class="retry-btn" data-retry-type="card">重试</button>
           </div>
           <span class="image-label">改图</span>
         </div>
@@ -107,11 +107,11 @@ function createHistoryCard(item, allowNSFW) {
   } else {
     imageHtml = `
       <div class="card-image">
-        <img src="${item.imageUrl}" alt="${escapeHtml(item.prompt)}" loading="lazy" onerror="handleImageError(this, 'single')">
+        <img src="${item.imageUrl}" alt="${escapeHtml(item.prompt)}" loading="lazy" data-error-type="single">
         <div class="image-error" style="display: none;">
           <div class="error-icon">🖼️</div>
           <div class="error-text">图片已失效</div>
-          <button class="retry-btn" onclick="retryLoadImage(this)">重试</button>
+          <button class="retry-btn" data-retry-type="card">重试</button>
         </div>
         ${nsfwOverlayHtml}
       </div>
@@ -181,6 +181,22 @@ function createHistoryCard(item, allowNSFW) {
   card.querySelector(".delete-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     deleteItem(item.id);
+  });
+
+  // 为图片添加错误处理事件监听器
+  const images = card.querySelectorAll('img');
+  images.forEach(img => {
+    img.addEventListener('error', function() {
+      handleImageError(this, this.dataset.errorType);
+    });
+  });
+
+  // 为重试按钮添加事件监听器
+  const retryButtons = card.querySelectorAll('.retry-btn[data-retry-type="card"]');
+  retryButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      retryLoadImage(this);
+    });
   });
 
   return card;
@@ -350,12 +366,12 @@ function openModal(item) {
             <img src="${item.originalImageUrl}" 
                  style="width: 100%; border-radius: 8px; border: 1px solid #edf2f7;" 
                  alt="原图"
-                 onerror="handleModalImageError(this, '原图已失效')">
+                 data-error-type="modal-original">
             <div class="modal-image-error" style="display: none;">
               <div style="padding: 40px; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 8px; border: 1px solid #edf2f7;">
                 <div style="font-size: 32px; margin-bottom: 12px;">🖼️</div>
                 <div style="font-size: 14px; margin-bottom: 12px;">原图已失效</div>
-                <button onclick="retryModalImage(this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
+                <button class="retry-btn" data-retry-type="modal" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
               </div>
             </div>
             <p style="margin-top: 8px; color: #718096; font-size: 13px;">原图</p>
@@ -365,12 +381,12 @@ function openModal(item) {
             <img src="${item.imageUrl}" 
                  style="width: 100%; border-radius: 8px; border: 1px solid #edf2f7;" 
                  alt="改图结果"
-                 onerror="handleModalImageError(this, '改图结果已失效')">
+                 data-error-type="modal-result">
             <div class="modal-image-error" style="display: none;">
               <div style="padding: 40px; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 8px; border: 1px solid #edf2f7;">
                 <div style="font-size: 32px; margin-bottom: 12px;">🖼️</div>
                 <div style="font-size: 14px; margin-bottom: 12px;">改图结果已失效</div>
-                <button onclick="retryModalImage(this)" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
+                <button class="retry-btn" data-retry-type="modal" style="padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
               </div>
             </div>
             <p style="margin-top: 8px; color: #667eea; font-size: 13px; font-weight: 600;">✏️ 改图结果</p>
@@ -384,17 +400,33 @@ function openModal(item) {
                src="${item.imageUrl}" 
                alt="预览图片" 
                style="width: 100%; max-height: 60vh; object-fit: contain; display: block;"
-               onerror="handleModalImageError(this, '图片已失效')">
+               data-error-type="modal-single">
           <div class="modal-image-error" style="display: none;">
             <div style="padding: 60px; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 8px;">
               <div style="font-size: 48px; margin-bottom: 16px;">🖼️</div>
               <div style="font-size: 16px; margin-bottom: 16px;">图片已失效</div>
-              <button onclick="retryModalImage(this)" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
+              <button class="retry-btn" data-retry-type="modal" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
             </div>
           </div>
         </div>
       `;
     }
+    
+    // 为新创建的图片添加错误处理事件监听器
+    const modalImages = viewer.querySelectorAll('img');
+    modalImages.forEach(img => {
+      img.addEventListener('error', function() {
+        handleImageError(this, this.dataset.errorType);
+      });
+    });
+    
+    // 为重试按钮添加事件监听器
+    const retryButtons = viewer.querySelectorAll('.retry-btn[data-retry-type="modal"]');
+    retryButtons.forEach(btn => {
+      btn.addEventListener('click', function() {
+        retryLoadImage(this);
+      });
+    });
   }
 
   if (modalPrompt) modalPrompt.textContent = item.prompt;
@@ -689,21 +721,25 @@ function handleImageError(img, type) {
   img.style.display = 'none';
   
   // 找到对应的错误提示元素
-  const container = img.closest('.image-container') || img.closest('.card-image');
-  const errorDiv = container.querySelector('.image-error');
+  const container = img.closest('.image-container') || img.closest('.card-image') || img.closest('div');
+  const errorDiv = container.querySelector('.image-error, .modal-image-error');
   
   if (errorDiv) {
     errorDiv.style.display = 'flex';
     errorDiv.style.flexDirection = 'column';
     errorDiv.style.alignItems = 'center';
     errorDiv.style.justifyContent = 'center';
-    errorDiv.style.height = '150px';
-    errorDiv.style.backgroundColor = '#f8f9fa';
-    errorDiv.style.border = '2px dashed #dee2e6';
-    errorDiv.style.borderRadius = '8px';
-    errorDiv.style.color = '#6c757d';
-    errorDiv.style.fontSize = '12px';
-    errorDiv.style.textAlign = 'center';
+    
+    // 对于卡片中的错误提示
+    if (errorDiv.classList.contains('image-error')) {
+      errorDiv.style.height = '150px';
+      errorDiv.style.backgroundColor = '#f8f9fa';
+      errorDiv.style.border = '2px dashed #dee2e6';
+      errorDiv.style.borderRadius = '8px';
+      errorDiv.style.color = '#6c757d';
+      errorDiv.style.fontSize = '12px';
+      errorDiv.style.textAlign = 'center';
+    }
     
     // 存储原始URL以便重试
     errorDiv.dataset.originalSrc = img.src;
@@ -713,8 +749,8 @@ function handleImageError(img, type) {
 
 // 重试加载图片
 function retryLoadImage(button) {
-  const errorDiv = button.closest('.image-error');
-  const container = errorDiv.closest('.image-container') || errorDiv.closest('.card-image');
+  const errorDiv = button.closest('.image-error, .modal-image-error');
+  const container = errorDiv.closest('.image-container') || errorDiv.closest('.card-image') || errorDiv.closest('div');
   const img = container.querySelector('img');
   
   if (errorDiv && img) {
@@ -743,6 +779,12 @@ function retryLoadImage(button) {
       const errorText = errorDiv.querySelector('.error-text');
       if (errorText) {
         errorText.textContent = '图片链接已失效';
+      } else {
+        // 对于模态框中的错误
+        const errorTextEl = errorDiv.querySelector('div div:nth-child(2)');
+        if (errorTextEl) {
+          errorTextEl.textContent = '图片链接已彻底失效';
+        }
       }
     };
     
@@ -751,76 +793,3 @@ function retryLoadImage(button) {
     img.src = originalSrc + separator + 't=' + Date.now();
   }
 }
-
-// 全局错误处理函数（供内联事件使用）
-window.handleImageError = handleImageError;
-window.retryLoadImage = retryLoadImage;
-// 模态框图片错误处理
-function handleModalImageError(img, errorText) {
-  console.warn('模态框图片加载失败:', img.src);
-  
-  // 隐藏图片，显示错误提示
-  img.style.display = 'none';
-  
-  // 找到对应的错误提示元素
-  const container = img.closest('div');
-  const errorDiv = container.querySelector('.modal-image-error');
-  
-  if (errorDiv) {
-    errorDiv.style.display = 'block';
-    
-    // 更新错误文本
-    const errorTextEl = errorDiv.querySelector('div div:nth-child(2)');
-    if (errorTextEl) {
-      errorTextEl.textContent = errorText;
-    }
-    
-    // 存储原始URL以便重试
-    errorDiv.dataset.originalSrc = img.src;
-    errorDiv.dataset.originalAlt = img.alt;
-  }
-}
-
-// 重试加载模态框图片
-function retryModalImage(button) {
-  const errorDiv = button.closest('.modal-image-error');
-  const container = errorDiv.closest('div');
-  const img = container.querySelector('img');
-  
-  if (errorDiv && img) {
-    const originalSrc = errorDiv.dataset.originalSrc;
-    
-    // 显示加载状态
-    button.textContent = '加载中...';
-    button.disabled = true;
-    
-    // 重新设置图片源
-    img.onload = () => {
-      // 加载成功，隐藏错误提示，显示图片
-      errorDiv.style.display = 'none';
-      img.style.display = 'block';
-      button.textContent = '重试';
-      button.disabled = false;
-    };
-    
-    img.onerror = () => {
-      // 加载仍然失败
-      button.textContent = '重试';
-      button.disabled = false;
-      
-      // 更新错误文本
-      const errorTextEl = errorDiv.querySelector('div div:nth-child(2)');
-      if (errorTextEl) {
-        errorTextEl.textContent = '图片链接已彻底失效';
-      }
-    };
-    
-    // 添加时间戳避免缓存
-    const separator = originalSrc.includes('?') ? '&' : '?';
-    img.src = originalSrc + separator + 't=' + Date.now();
-  }
-}
-
-// 全局模态框错误处理函数
-window.handleModalImageError = handleModalImageError;
-window.retryModalImage = retryModalImage;
