@@ -604,3 +604,87 @@ header h1 {
         width: 100%;
     }
 }
+/* 图片错误处理样式 */
+.image-error {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 150px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    color: #6c757d;
+    font-size: 12px;
+    text-align: center;
+    padding: 16px;
+}
+
+.image-error .error-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    opacity: 0.6;
+}
+
+.image-error .error-text {
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.image-error .retry-btn {
+    padding: 6px 12px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.image-error .retry-btn:hover {
+    background: #0056b3;
+}
+
+.image-error .retry-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* 双图模式下的错误处理 */
+.dual-image .image-container {
+    position: relative;
+}
+
+.dual-image .image-error {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+}
+
+/* 单图模式下的错误处理 */
+.card-image .image-error {
+    width: 100%;
+    min-height: 200px;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .image-error {
+        height: 120px;
+        font-size: 11px;
+    }
+    
+    .image-error .error-icon {
+        font-size: 20px;
+        margin-bottom: 6px;
+    }
+    
+    .image-error .retry-btn {
+        padding: 4px 8px;
+        font-size: 10px;
+    }
+}
