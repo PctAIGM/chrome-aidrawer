@@ -71,6 +71,18 @@
                             <h2 id="formTitle">添加服务商</h2>
                             <div class="form-grid">
                                 <div class="form-group full-width">
+                                    <label for="providerTemplate">服务商模板</label>
+                                    <div class="template-row">
+                                        <select id="providerTemplate">
+                                            <option value="">选择模板（可选）</option>
+                                            <!-- 模板选项将通过JS动态加载 -->
+                                        </select>
+                                        <button type="button" id="manageTemplatesBtn" class="btn secondary small">管理模板</button>
+                                    </div>
+                                    <span class="hint">选择模板可快速填充常用配置</span>
+                                </div>
+
+                                <div class="form-group full-width">
                                     <label for="providerName">服务商名称</label>
                                     <input
                                         type="text"
@@ -816,6 +828,23 @@
             </div>
         </template>
 
+        <!-- 模板项模板 -->
+        <template id="templateItemTemplate">
+            <div class="template-item">
+                <div class="template-header">
+                    <div class="template-name"></div>
+                    <div class="template-type-badge"></div>
+                </div>
+                <div class="template-body">
+                    <div class="template-endpoint"></div>
+                </div>
+                <div class="template-actions">
+                    <button class="btn-edit-template small secondary">✏️ 编辑</button>
+                    <button class="btn-delete-template small danger">🗑️ 删除</button>
+                </div>
+            </div>
+        </template>
+
         <!-- 配置预览弹窗 -->
         <div id="previewModal" class="modal" style="display: none;">
             <div class="modal-content">
@@ -830,6 +859,81 @@
                 <div class="modal-footer">
                     <button class="btn secondary close-btn">取消</button>
                     <button id="confirmImportBtn" class="btn primary">确认导入</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模板管理弹窗 -->
+        <div id="templateModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🎯 服务商模板管理</h2>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="template-list">
+                        <div class="section-header">
+                            <h3>现有模板</h3>
+                            <button id="addTemplateBtn" class="btn primary small">➕ 新增模板</button>
+                        </div>
+                        <div id="templatesList" class="templates-list">
+                            <!-- 模板列表将通过JS动态生成 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 模板编辑表单 -->
+                    <div id="templateFormSection" class="template-form" style="display: none;">
+                        <h3 id="templateFormTitle">新增模板</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="templateName">模板名称</label>
+                                <input type="text" id="templateName" placeholder="例如: NewAPI 生图">
+                            </div>
+                            <div class="form-group">
+                                <label for="templateServiceType">服务类型</label>
+                                <select id="templateServiceType">
+                                    <option value="generate">🎨 画图</option>
+                                    <option value="edit">✏️ 改图</option>
+                                </select>
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="templateEndpoint">API Endpoint</label>
+                                <input type="text" id="templateEndpoint" placeholder="https://api.example.com/v1/images/generations">
+                            </div>
+                            <div class="form-group full-width">
+                                <label for="templateResponsePath">Response Path</label>
+                                <input type="text" id="templateResponsePath" placeholder="data[0].url">
+                            </div>
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="templateUseMultipart">
+                                    <span>使用 multipart/form-data</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label for="templateImageFieldName">图片字段名</label>
+                                <input type="text" id="templateImageFieldName" placeholder="image" value="image">
+                            </div>
+                            
+                            <!-- 自定义参数 -->
+                            <div class="form-group full-width">
+                                <label>预设参数</label>
+                                <div id="templateParamsList" class="custom-params-list"></div>
+                                <button type="button" id="addTemplateParamBtn" class="btn text-btn small">+ 添加参数</button>
+                            </div>
+                            
+                            <!-- 自定义请求头 -->
+                            <div class="form-group full-width">
+                                <label>预设请求头</label>
+                                <div id="templateHeadersList" class="custom-params-list"></div>
+                                <button type="button" id="addTemplateHeaderBtn" class="btn text-btn small">+ 添加请求头</button>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button id="cancelTemplateBtn" class="btn secondary">取消</button>
+                            <button id="saveTemplateBtn" class="btn primary">保存模板</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

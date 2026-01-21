@@ -15,12 +15,52 @@ const defaultSettings = {
   savePath: "",
   // 图片上传服务配置
   imageUploadServices: [], // 上传服务列表
+  // 服务商模板配置
+  providerTemplates: [], // 模板列表
 };
+
+// 内置模板
+const builtinTemplates = [
+  {
+    id: "newapi-generate",
+    name: "NewAPI 生图",
+    serviceType: "generate",
+    endpoint: "https://api.newapi.pro/v1/images/generations",
+    responsePath: "data[0].url",
+    useMultipart: false,
+    imageFieldName: "image",
+    customParams: {
+      model: { value: "dall-e-3", fieldType: "" },
+      n: { value: 1, fieldType: "" },
+      size: { value: "1024x1024", fieldType: "" },
+      response_format: { value: "url", fieldType: "" }
+    },
+    customHeaders: {},
+    builtin: true
+  },
+  {
+    id: "newapi-edit",
+    name: "NewAPI 改图",
+    serviceType: "edit",
+    endpoint: "https://api.newapi.pro/v1/images/edits",
+    responsePath: "data[0].url",
+    useMultipart: true,
+    imageFieldName: "image",
+    customParams: {
+      n: { value: 1, fieldType: "" },
+      size: { value: "1024x1024", fieldType: "" },
+      response_format: { value: "url", fieldType: "" }
+    },
+    customHeaders: {},
+    builtin: true
+  }
+];
 
 let editingProviderId = null;
 let currentProviderId = null;
 let editingUploadServiceId = null;
 let currentUploadServiceId = null;
+let editingTemplateId = null;
 
 async function loadSettings() {
   try {
@@ -261,6 +301,29 @@ function setupEventListeners() {
     .getElementById("addHeaderBtn")
     .addEventListener("click", () => addHeaderRow());
 
+  // 模板相关事件
+  document
+    .getElementById("providerTemplate")
+    .addEventListener("change", onTemplateChange);
+  document
+    .getElementById("manageTemplatesBtn")
+    .addEventListener("click", showTemplateModal);
+  document
+    .getElementById("addTemplateBtn")
+    .addEventListener("click", () => showTemplateForm());
+  document
+    .getElementById("saveTemplateBtn")
+    .addEventListener("click", saveTemplate);
+  document
+    .getElementById("cancelTemplateBtn")
+    .addEventListener("click", hideTemplateForm);
+  document
+    .getElementById("addTemplateParamBtn")
+    .addEventListener("click", () => addTemplateParameterRow());
+  document
+    .getElementById("addTemplateHeaderBtn")
+    .addEventListener("click", () => addTemplateHeaderRow());
+
   // 异步模式切换逻辑
   const asyncToggle = document.getElementById("providerAsyncMode");
   const asyncSection = document.getElementById("asyncConfigSection");
@@ -465,6 +528,12 @@ function addParameterRow(
         existingInput.disabled = false;
         existingInput.style.backgroundColor = "";
         existingInput.placeholder = "参数值";
+        // 如果之前是random类型，恢复值显示
+        if (existingInput.value === "" && value !== "" && value !== "__RANDOM__") {
+          existingInput.value = typeof value === "object" && value !== null
+            ? JSON.stringify(value)
+            : String(value);
+        }
       }
     }
   };
@@ -492,7 +561,7 @@ function addParameterRow(
     valInput.value =
       typeof value === "object" && value !== null
         ? JSON.stringify(value)
-        : String(value);
+        : String(value === "__RANDOM__" ? "" : value);
   }
 
   typeSelect.addEventListener("change", updateInputControl);
@@ -512,6 +581,9 @@ function showProviderForm(provider = null) {
   const section = document.getElementById("providerFormSection");
   const title = document.getElementById("formTitle");
   if (!section) return;
+
+  // 加载模板选项
+  loadTemplateOptions();
 
   editingProviderId = provider ? provider.id : null;
   const container = document.getElementById("customParamsList");
@@ -570,19 +642,28 @@ function showProviderForm(provider = null) {
           actualValue = v.value;
           fieldType = v.fieldType || "";
           // 重新判断类型
-          if (Array.isArray(actualValue)) type = "list";
-          else if (typeof actualValue === "object" && actualValue !== null)
+          if (actualValue === "__RANDOM__") {
+            type = "random";
+          } else if (Array.isArray(actualValue)) {
+            type = "list";
+          } else if (typeof actualValue === "object" && actualValue !== null) {
             type = "object";
-          else if (typeof actualValue === "number") {
+          } else if (typeof actualValue === "number") {
             type = Number.isInteger(actualValue) ? "int" : "float";
           } else if (typeof actualValue === "boolean") {
             type = "bool";
-          } else type = "string";
+          } else {
+            type = "string";
+          }
         } else {
           // 旧格式兼容
-          if (Array.isArray(v)) type = "list";
-          else if (typeof v === "object" && v !== null) type = "object";
-          else if (typeof v === "number") {
+          if (v === "__RANDOM__") {
+            type = "random";
+          } else if (Array.isArray(v)) {
+            type = "list";
+          } else if (typeof v === "object" && v !== null) {
+            type = "object";
+          } else if (typeof v === "number") {
             type = Number.isInteger(v) ? "int" : "float";
           } else if (typeof v === "boolean") {
             type = "bool";
@@ -1884,4 +1965,505 @@ function addUploadParameterRow(key = "", value = "") {
   });
 
   container.appendChild(clone);
+}
+
+// ==================== 模板管理功能 ====================
+
+function loadTemplateOptions() {
+  const select = document.getElementById("providerTemplate");
+  if (!select) return;
+
+  select.innerHTML = '<option value="">选择模板（可选）</option>';
+
+  // 获取所有模板（内置 + 用户自定义）
+  const allTemplates = getAllTemplates();
+  
+  allTemplates.forEach(template => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    const typeIcon = template.serviceType === "edit" ? "✏️" : "🎨";
+    const builtinMark = template.builtin ? " (内置)" : "";
+    option.textContent = `${typeIcon} ${template.name}${builtinMark}`;
+    select.appendChild(option);
+  });
+}
+
+function getAllTemplates() {
+  // 获取用户自定义模板
+  const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
+  const userTemplates = settings.providerTemplates || [];
+  
+  // 合并内置模板和用户模板
+  return [...builtinTemplates, ...userTemplates];
+}
+
+function onTemplateChange() {
+  const select = document.getElementById("providerTemplate");
+  const templateId = select.value;
+  
+  if (!templateId) return;
+  
+  const allTemplates = getAllTemplates();
+  const template = allTemplates.find(t => t.id === templateId);
+  
+  if (template) {
+    applyTemplate(template);
+  }
+}
+
+function applyTemplate(template) {
+  // 填充基本信息
+  document.getElementById("providerName").value = template.name;
+  document.getElementById("providerEndpoint").value = template.endpoint || "";
+  document.getElementById("providerResponsePath").value = template.responsePath || "";
+  
+  // 设置服务类型
+  const serviceTypeRadio = document.querySelector(`input[name="serviceType"][value="${template.serviceType}"]`);
+  if (serviceTypeRadio) {
+    serviceTypeRadio.checked = true;
+    // 触发change事件以更新UI
+    serviceTypeRadio.dispatchEvent(new Event('change'));
+  }
+  
+  // 设置multipart选项
+  const useMultipartCheckbox = document.getElementById("providerUseMultipart");
+  if (useMultipartCheckbox) {
+    useMultipartCheckbox.checked = !!template.useMultipart;
+    useMultipartCheckbox.dispatchEvent(new Event('change'));
+  }
+  
+  // 设置图片字段名
+  const imageFieldNameInput = document.getElementById("providerImageFieldName");
+  if (imageFieldNameInput) {
+    imageFieldNameInput.value = template.imageFieldName || "image";
+  }
+  
+  // 清空现有参数和头部
+  const containerParams = document.getElementById("customParamsList");
+  const containerHeaders = document.getElementById("customHeadersList");
+  if (containerParams) containerParams.innerHTML = "";
+  if (containerHeaders) containerHeaders.innerHTML = "";
+  
+  // 添加自定义头部
+  if (template.customHeaders) {
+    Object.entries(template.customHeaders).forEach(([k, v]) => {
+      addHeaderRow(k, v);
+    });
+  }
+  
+  // 添加自定义参数
+  if (template.customParams) {
+    Object.entries(template.customParams).forEach(([k, v]) => {
+      let type = "string";
+      let fieldType = "";
+      let actualValue = v;
+
+      // 检查是否是新格式（带fieldType的对象）
+      if (v && typeof v === "object" && v.value !== undefined) {
+        actualValue = v.value;
+        fieldType = v.fieldType || "";
+        // 重新判断类型
+        if (actualValue === "__RANDOM__") {
+          type = "random";
+        } else if (Array.isArray(actualValue)) {
+          type = "list";
+        } else if (typeof actualValue === "object" && actualValue !== null) {
+          type = "object";
+        } else if (typeof actualValue === "number") {
+          type = Number.isInteger(actualValue) ? "int" : "float";
+        } else if (typeof actualValue === "boolean") {
+          type = "bool";
+        } else {
+          type = "string";
+        }
+      } else {
+        // 旧格式兼容
+        if (v === "__RANDOM__") {
+          type = "random";
+        } else if (Array.isArray(v)) {
+          type = "list";
+        } else if (typeof v === "object" && v !== null) {
+          type = "object";
+        } else if (typeof v === "number") {
+          type = Number.isInteger(v) ? "int" : "float";
+        } else if (typeof v === "boolean") {
+          type = "bool";
+        }
+      }
+
+      addParameterRow(k, actualValue, type, fieldType);
+    });
+  }
+  
+  showStatus("已应用模板配置", "success");
+}
+
+function showTemplateModal() {
+  const modal = document.getElementById("templateModal");
+  if (modal) {
+    modal.style.display = "flex";
+    loadTemplatesList();
+  }
+}
+
+function hideTemplateModal() {
+  const modal = document.getElementById("templateModal");
+  if (modal) {
+    modal.style.display = "none";
+    hideTemplateForm();
+  }
+}
+
+function loadTemplatesList() {
+  const container = document.getElementById("templatesList");
+  if (!container) return;
+  
+  container.innerHTML = "";
+  
+  const allTemplates = getAllTemplates();
+  
+  if (allTemplates.length === 0) {
+    container.innerHTML = '<p class="no-templates">暂无模板</p>';
+    return;
+  }
+  
+  allTemplates.forEach(template => {
+    const item = createTemplateItem(template);
+    container.appendChild(item);
+  });
+}
+
+function createTemplateItem(template) {
+  const templateEl = document.getElementById("templateItemTemplate");
+  const item = templateEl.content.cloneNode(true);
+  
+  const nameEl = item.querySelector(".template-name");
+  const typeEl = item.querySelector(".template-type-badge");
+  const endpointEl = item.querySelector(".template-endpoint");
+  const editBtn = item.querySelector(".btn-edit-template");
+  const deleteBtn = item.querySelector(".btn-delete-template");
+  
+  nameEl.textContent = template.name;
+  typeEl.textContent = template.serviceType === "edit" ? "✏️ 改图" : "🎨 生图";
+  typeEl.className = `template-type-badge ${template.serviceType}`;
+  endpointEl.textContent = template.endpoint || "";
+  endpointEl.title = template.endpoint || "";
+  
+  // 内置模板不能删除，但可以编辑（编辑后保存为新模板）
+  if (template.builtin) {
+    deleteBtn.style.display = "none";
+    editBtn.textContent = "✏️ 编辑";
+    editBtn.title = "编辑并保存为新模板";
+  }
+  
+  editBtn.addEventListener("click", () => {
+    showTemplateForm(template);
+  });
+  
+  deleteBtn.addEventListener("click", () => {
+    if (confirm(`确定要删除模板"${template.name}"吗？`)) {
+      deleteTemplate(template.id);
+    }
+  });
+  
+  return item;
+}
+
+function showTemplateForm(template = null) {
+  const formSection = document.getElementById("templateFormSection");
+  const title = document.getElementById("templateFormTitle");
+  
+  if (!formSection) return;
+  
+  // 如果是内置模板，创建副本进行编辑
+  if (template && template.builtin) {
+    const newTemplate = { ...template };
+    delete newTemplate.id;
+    delete newTemplate.builtin;
+    newTemplate.name = template.name + " (自定义)";
+    template = newTemplate;
+    editingTemplateId = null; // 作为新模板保存
+  } else {
+    editingTemplateId = template ? template.id : null;
+  }
+  
+  if (template) {
+    title.textContent = template.builtin ? "基于内置模板创建" : "编辑模板";
+    document.getElementById("templateName").value = template.name || "";
+    document.getElementById("templateServiceType").value = template.serviceType || "generate";
+    document.getElementById("templateEndpoint").value = template.endpoint || "";
+    document.getElementById("templateResponsePath").value = template.responsePath || "";
+    document.getElementById("templateUseMultipart").checked = !!template.useMultipart;
+    document.getElementById("templateImageFieldName").value = template.imageFieldName || "image";
+    
+    // 清空现有参数和头部
+    const containerParams = document.getElementById("templateParamsList");
+    const containerHeaders = document.getElementById("templateHeadersList");
+    if (containerParams) containerParams.innerHTML = "";
+    if (containerHeaders) containerHeaders.innerHTML = "";
+    
+    // 加载自定义头部
+    if (template.customHeaders) {
+      Object.entries(template.customHeaders).forEach(([k, v]) => {
+        addTemplateHeaderRow(k, v);
+      });
+    }
+    
+    // 加载自定义参数
+    if (template.customParams) {
+      Object.entries(template.customParams).forEach(([k, v]) => {
+        let type = "string";
+        let fieldType = "";
+        let actualValue = v;
+
+        // 检查是否是新格式（带fieldType的对象）
+        if (v && typeof v === "object" && v.value !== undefined) {
+          actualValue = v.value;
+          fieldType = v.fieldType || "";
+          // 重新判断类型
+          if (actualValue === "__RANDOM__") {
+            type = "random";
+          } else if (Array.isArray(actualValue)) {
+            type = "list";
+          } else if (typeof actualValue === "object" && actualValue !== null) {
+            type = "object";
+          } else if (typeof actualValue === "number") {
+            type = Number.isInteger(actualValue) ? "int" : "float";
+          } else if (typeof actualValue === "boolean") {
+            type = "bool";
+          } else {
+            type = "string";
+          }
+        } else {
+          // 旧格式兼容
+          if (v === "__RANDOM__") {
+            type = "random";
+          } else if (Array.isArray(v)) {
+            type = "list";
+          } else if (typeof v === "object" && v !== null) {
+            type = "object";
+          } else if (typeof v === "number") {
+            type = Number.isInteger(v) ? "int" : "float";
+          } else if (typeof v === "boolean") {
+            type = "bool";
+          }
+        }
+
+        addTemplateParameterRow(k, actualValue, type, fieldType);
+      });
+    }
+  } else {
+    title.textContent = "新增模板";
+    clearTemplateForm();
+  }
+  
+  formSection.style.display = "block";
+  formSection.scrollIntoView({ behavior: "smooth" });
+}
+
+function hideTemplateForm() {
+  const formSection = document.getElementById("templateFormSection");
+  if (formSection) {
+    formSection.style.display = "none";
+  }
+  editingTemplateId = null;
+  clearTemplateForm();
+}
+
+function clearTemplateForm() {
+  document.getElementById("templateName").value = "";
+  document.getElementById("templateServiceType").value = "generate";
+  document.getElementById("templateEndpoint").value = "";
+  document.getElementById("templateResponsePath").value = "";
+  document.getElementById("templateUseMultipart").checked = false;
+  document.getElementById("templateImageFieldName").value = "image";
+  
+  // 清空参数和头部
+  const containerParams = document.getElementById("templateParamsList");
+  const containerHeaders = document.getElementById("templateHeadersList");
+  if (containerParams) containerParams.innerHTML = "";
+  if (containerHeaders) containerHeaders.innerHTML = "";
+}
+
+function saveTemplate() {
+  const name = document.getElementById("templateName").value.trim();
+  const serviceType = document.getElementById("templateServiceType").value;
+  const endpoint = document.getElementById("templateEndpoint").value.trim();
+  const responsePath = document.getElementById("templateResponsePath").value.trim();
+  const useMultipart = document.getElementById("templateUseMultipart").checked;
+  const imageFieldName = document.getElementById("templateImageFieldName").value.trim() || "image";
+  
+  if (!name || !endpoint) {
+    showStatus("请输入模板名称和端点", "error");
+    return;
+  }
+  
+  // 收集自定义请求头
+  const customHeaders = {};
+  document.querySelectorAll("#templateHeadersList .header-row").forEach((row) => {
+    const k = row.querySelector(".header-key").value.trim();
+    const v = row.querySelector(".header-value").value.trim();
+    if (k) customHeaders[k] = v;
+  });
+
+  // 收集自定义参数
+  const customParams = {};
+  document.querySelectorAll("#templateParamsList .param-row").forEach((row) => {
+    const k = row.querySelector(".param-key").value.trim();
+    const type = row.querySelector(".param-type").value;
+    const valInput = row.querySelector(".param-value, .param-value-select");
+    const v = valInput.value.trim();
+    const fieldTypeSelect = row.querySelector(".param-field-type");
+    const fieldType = fieldTypeSelect ? fieldTypeSelect.value : "";
+
+    if (k) {
+      try {
+        let parsedValue;
+        if (type === "int") parsedValue = parseInt(v, 10);
+        else if (type === "float") parsedValue = parseFloat(v);
+        else if (type === "bool") parsedValue = v === "true";
+        else if (type === "random") parsedValue = "__RANDOM__";
+        else if (type === "object" || type === "list") parsedValue = JSON.parse(v);
+        else parsedValue = v;
+
+        // 如果有字段类型，使用新格式
+        if (fieldType) {
+          customParams[k] = { value: parsedValue, fieldType: fieldType };
+        } else {
+          customParams[k] = parsedValue;
+        }
+      } catch (e) {
+        console.warn(`模板参数 ${k} 转换失败:`, e);
+        customParams[k] = fieldType ? { value: v, fieldType: fieldType } : v;
+      }
+    }
+  });
+  
+  const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
+  let templates = settings.providerTemplates || [];
+  
+  const templateData = {
+    name,
+    serviceType,
+    endpoint,
+    responsePath,
+    useMultipart,
+    imageFieldName,
+    customParams,
+    customHeaders
+  };
+  
+  if (editingTemplateId) {
+    // 编辑现有模板
+    templates = templates.map(t => t.id === editingTemplateId ? { ...t, ...templateData } : t);
+  } else {
+    // 新增模板
+    templateData.id = "template-" + Date.now();
+    templates.push(templateData);
+  }
+  
+  settings.providerTemplates = templates;
+  localStorage.setItem('ai-drawer-settings', JSON.stringify(settings));
+  
+  showStatus("模板保存成功", "success");
+  hideTemplateForm();
+  loadTemplatesList();
+  loadTemplateOptions(); // 更新主表单的模板选项
+}
+
+function deleteTemplate(templateId) {
+  const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
+  let templates = settings.providerTemplates || [];
+  
+  templates = templates.filter(t => t.id !== templateId);
+  settings.providerTemplates = templates;
+  localStorage.setItem('ai-drawer-settings', JSON.stringify(settings));
+  
+  showStatus("模板删除成功", "success");
+  loadTemplatesList();
+  loadTemplateOptions(); // 更新主表单的模板选项
+}
+
+// 模态框关闭事件
+document.addEventListener('click', (e) => {
+  const templateModal = document.getElementById('templateModal');
+  if (e.target === templateModal) {
+    hideTemplateModal();
+  }
+  
+  // 关闭按钮
+  if (e.target.classList.contains('close-btn') && e.target.closest('#templateModal')) {
+    hideTemplateModal();
+  }
+});
+// 模板参数管理
+function addTemplateParameterRow(key = "", value = "", type = "string", fieldType = "") {
+  const container = document.getElementById("templateParamsList");
+  if (!container) return;
+
+  const template = document.getElementById("paramRowTemplate");
+  const row = template.content.cloneNode(true);
+
+  const keyInput = row.querySelector(".param-key");
+  const typeSelect = row.querySelector(".param-type");
+  const valueInput = row.querySelector(".param-value");
+  const fieldTypeSelect = row.querySelector(".param-field-type");
+  const removeBtn = row.querySelector(".btn-remove-param");
+
+  keyInput.value = key;
+  typeSelect.value = type;
+  
+  // 对于random类型，显示空值和禁用状态
+  if (type === "random") {
+    valueInput.value = "";
+    valueInput.placeholder = "将自动生成随机数";
+    valueInput.disabled = true;
+    valueInput.style.backgroundColor = "#f0f0f0";
+  } else {
+    valueInput.value = typeof value === "object" ? JSON.stringify(value) : String(value === "__RANDOM__" ? "" : value);
+  }
+  
+  if (fieldTypeSelect) fieldTypeSelect.value = fieldType;
+
+  // 添加类型变化监听器
+  typeSelect.addEventListener("change", () => {
+    const newType = typeSelect.value;
+    if (newType === "random") {
+      valueInput.value = "";
+      valueInput.placeholder = "将自动生成随机数";
+      valueInput.disabled = true;
+      valueInput.style.backgroundColor = "#f0f0f0";
+    } else {
+      valueInput.disabled = false;
+      valueInput.style.backgroundColor = "";
+      valueInput.placeholder = "参数值";
+    }
+  });
+
+  removeBtn.addEventListener("click", () => {
+    row.querySelector(".param-row").remove();
+  });
+
+  container.appendChild(row);
+}
+
+function addTemplateHeaderRow(key = "", value = "") {
+  const container = document.getElementById("templateHeadersList");
+  if (!container) return;
+
+  const template = document.getElementById("headerRowTemplate");
+  const row = template.content.cloneNode(true);
+
+  const keyInput = row.querySelector(".header-key");
+  const valueInput = row.querySelector(".header-value");
+  const removeBtn = row.querySelector(".btn-remove-header");
+
+  keyInput.value = key;
+  valueInput.value = value;
+
+  removeBtn.addEventListener("click", () => {
+    row.querySelector(".header-row").remove();
+  });
+
+  container.appendChild(row);
 }

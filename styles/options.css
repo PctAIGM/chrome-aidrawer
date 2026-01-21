@@ -1067,3 +1067,173 @@ kbd {
     background: var(--bg-tertiary);
     border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
+/* ==================== 模板管理样式 ==================== */
+
+.template-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.template-row select {
+    flex: 1;
+}
+
+.template-list {
+    margin-bottom: 24px;
+}
+
+.templates-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.template-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    transition: var(--transition);
+}
+
+.template-item:hover {
+    border-color: var(--border-color-strong);
+    box-shadow: var(--shadow-sm);
+}
+
+.template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.template-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.template-type-badge {
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.template-type-badge.generate {
+    background: rgba(52, 199, 89, 0.1);
+    color: var(--success-color);
+}
+
+.template-type-badge.edit {
+    background: rgba(0, 122, 255, 0.1);
+    color: var(--accent-color);
+}
+
+.template-body {
+    margin-bottom: 12px;
+}
+
+.template-endpoint {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    background: var(--bg-tertiary);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    word-break: break-all;
+}
+
+.template-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.template-form {
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.template-form h3 {
+    margin-bottom: 16px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.no-templates {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 40px 20px;
+    font-style: italic;
+}
+
+/* 模态框样式增强 */
+#templateModal .modal-content {
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+#templateModal .modal-body {
+    padding: 0;
+}
+
+#templateModal .template-list {
+    padding: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#templateModal .template-form {
+    margin: 0;
+    background: var(--bg-secondary);
+    border-radius: 0;
+}
+
+/* 按钮样式调整 */
+.btn-edit-template,
+.btn-delete-template {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-edit-template:hover {
+    background: var(--accent-light);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.btn-delete-template:hover {
+    background: rgba(255, 59, 48, 0.1);
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .template-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .template-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .template-actions {
+        justify-content: flex-start;
+    }
+}
