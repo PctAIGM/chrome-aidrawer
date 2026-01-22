@@ -447,7 +447,7 @@ header h1 {
     color: white;
     font-size: 12px;
     font-weight: bold;
-    z-index: 5;
+    z-index: 20;
     pointer-events: none;
     text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     border-radius: 12px 12px 0 0;
@@ -727,12 +727,12 @@ header h1 {
         height: 120px;
         font-size: 11px;
     }
-    
+
     .image-error .error-icon {
         font-size: 20px;
         margin-bottom: 6px;
     }
-    
+
     .image-error .retry-btn {
         padding: 4px 8px;
         font-size: 10px;
