@@ -10,9 +10,7 @@
     "activeTab",
     "clipboardWrite",
     "notifications",
-    "scripting",
-    "downloads",
-    "downloads.shelf"
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"

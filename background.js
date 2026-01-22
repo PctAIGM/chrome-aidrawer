@@ -193,19 +193,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
 
-  } else if (message.action === "saveImage") {
-    // 处理来自页面或其他地方的手动保存请求
-    chrome.storage.local.get("settings").then((res) => {
-      const settings = res.settings || DEFAULT_SETTINGS;
-      saveImageToLocal(
-        message.imageUrl,
-        message.prompt,
-        message.savePath || settings.savePath,
-      )
-        .then(() => sendResponse({ success: true }))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
-    });
-    return true;
   }
 });
 
@@ -789,21 +776,6 @@ async function saveToHistory(item) {
   const { settings } = await chrome.storage.local.get("settings");
   const maxItems = settings?.maxHistory || MAX_HISTORY_ITEMS;
 
-  // 如果开启了自动保存图片到本地
-  if (settings?.autoSaveImages && item.imageUrl) {
-    try {
-      console.log("检测到自动保存开启, savePath:", settings.savePath);
-      await saveImageToLocal(item.imageUrl, item.prompt, settings.savePath);
-    } catch (e) {
-      console.error("自动保存图片到本地失败:", e.message, e);
-    }
-  } else {
-    console.log("自动保存未开启或无图片URL", {
-      autoSaveImages: settings?.autoSaveImages,
-      hasImageUrl: !!item.imageUrl,
-    });
-  }
-
   const stored = await chrome.storage.local.get(["history"]);
   let history = stored.history || [];
   history.unshift(item);
@@ -822,126 +794,6 @@ async function saveToHistory(item) {
     } else {
       throw error;
     }
-  }
-}
-
-// 保存图片到本地下载目录
-async function saveImageToLocal(imageUrl, prompt, savePath) {
-  console.log("开始保存图片到本地...", {
-    prompt,
-    savePath,
-    imageUrlLength: imageUrl?.length,
-  });
-
-  // 生成文件名：时间戳 + 随机ID（避免中文和特殊字符导致的问题）
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-")
-    .replace("T", "_")
-    .slice(0, 19);
-  const randomId = Math.random().toString(36).substring(2, 8);
-  const filename = `ai_${timestamp}_${randomId}.png`;
-
-  // 构建完整路径
-  // 注意：chrome.downloads.download 的 filename 只能是相对于浏览器下载目录的相对路径
-  // 不能使用绝对路径（如 C:\xxx 或 /home/xxx）
-  let fullPath = filename;
-  if (savePath) {
-    let cleanPath = savePath
-      .replace(/\\/g, "/") // 反斜杠转正斜杠
-      .replace(/^\/+|\/+$/g, "") // 移除首尾斜杠
-      .replace(/[<>:"|?*]/g, "") // 移除Windows非法字符
-      .replace(/\/+/g, "/"); // 多个斜杠合并
-
-    // 检测并移除绝对路径（如 C:/xxx, D:/xxx, /home/xxx）
-    // Windows 盘符模式：X:/
-    if (/^[A-Za-z]:/.test(cleanPath)) {
-      console.warn(
-        "检测到绝对路径，将忽略盘符部分。请在设置中使用相对路径（如 AI-Images）",
-      );
-      // 移除盘符部分，只保留最后一个目录名作为子目录
-      const parts = cleanPath
-        .split("/")
-        .filter((p) => p && !/^[A-Za-z]:$/.test(p));
-      cleanPath = parts.length > 0 ? parts[parts.length - 1] : "";
-    }
-
-    if (cleanPath) {
-      fullPath = `${cleanPath}/${filename}`;
-    }
-  }
-
-  console.log("=== 图片保存调试信息 ===");
-  console.log("原始 savePath:", savePath);
-  console.log("生成的 filename:", filename);
-  console.log("最终 fullPath:", fullPath);
-  console.log("图片URL类型:", imageUrl?.startsWith("data:") ? "base64" : "url");
-
-  // chrome.downloads.download 可以直接使用 data URL
-  // 不需要转换为 blob URL（Service Worker 中不支持 URL.createObjectURL）
-  try {
-    // 如果支持 shelf 权限，则隐藏下载栏
-    if (chrome.downloads.setShelfEnabled) {
-      chrome.downloads.setShelfEnabled(false);
-    }
-
-    const downloadId = await chrome.downloads.download({
-      url: imageUrl,
-      filename: fullPath,
-      saveAs: false, // 不弹出保存对话框（需要用户在Chrome设置中关闭"下载前询问"）
-      conflictAction: "uniquify", // 文件名冲突时自动重命名，避免覆盖提示
-    });
-    console.log("下载已启动, downloadId:", downloadId);
-
-    // 监听下载完成状态
-    return new Promise((resolve, reject) => {
-      const listener = (delta) => {
-        if (delta.id === downloadId) {
-          if (delta.state) {
-            if (delta.state.current === "complete") {
-              console.log("图片下载完成:", fullPath);
-              chrome.downloads.onChanged.removeListener(listener);
-              // 恢复下载栏（如果需要）
-              if (chrome.downloads.setShelfEnabled) {
-                setTimeout(() => chrome.downloads.setShelfEnabled(true), 1000);
-              }
-              resolve();
-            } else if (delta.state.current === "interrupted") {
-              console.error("图片下载被中断");
-              chrome.downloads.onChanged.removeListener(listener);
-              if (chrome.downloads.setShelfEnabled) {
-                chrome.downloads.setShelfEnabled(true);
-              }
-              reject(new Error("下载被中断"));
-            }
-          }
-          if (delta.error) {
-            console.error("图片下载错误:", delta.error.current);
-            chrome.downloads.onChanged.removeListener(listener);
-            if (chrome.downloads.setShelfEnabled) {
-              chrome.downloads.setShelfEnabled(true);
-            }
-            reject(new Error(delta.error.current));
-          }
-        }
-      };
-      chrome.downloads.onChanged.addListener(listener);
-
-      // 超时处理
-      setTimeout(() => {
-        chrome.downloads.onChanged.removeListener(listener);
-        if (chrome.downloads.setShelfEnabled) {
-          chrome.downloads.setShelfEnabled(true);
-        }
-        resolve(); // 超时后也认为成功，避免阻塞
-      }, 30000);
-    });
-  } catch (error) {
-    console.error("chrome.downloads.download 调用失败:", error);
-    if (chrome.downloads.setShelfEnabled) {
-      chrome.downloads.setShelfEnabled(true);
-    }
-    throw error;
   }
 }
 

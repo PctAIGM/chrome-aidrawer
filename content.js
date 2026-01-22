@@ -76,39 +76,11 @@ function showMiniStatus(state, data) {
         border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;
         transition: background 0.2s;
       ">预览</button>
-      <button id="ai-draw-mini-save" style="
-        background: #48bb78; color: white; border: none; padding: 6px 14px;
-        border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;
-        transition: background 0.2s;
-      ">保存</button>
       <div id="ai-draw-mini-close" style="cursor: pointer; padding: 4px; color: #a0aec0; line-height: 1;">&times;</div>
     `;
     document.getElementById("ai-draw-mini-open").onclick = async () => {
       await showResultModal(data.imageUrl, data.prompt, data.debugData);
       container.remove();
-    };
-    document.getElementById("ai-draw-mini-save").onclick = () => {
-      const btn = document.getElementById("ai-draw-mini-save");
-      btn.textContent = "⌛";
-      btn.disabled = true;
-      chrome.runtime.sendMessage({
-        action: "saveImage",
-        imageUrl: data.imageUrl,
-        prompt: data.prompt
-      }).then((res) => {
-        if (res && res.success) {
-          btn.textContent = "✅";
-          setTimeout(() => container.remove(), 1000);
-        } else {
-          btn.textContent = "❌";
-          btn.disabled = false;
-          setTimeout(() => btn.textContent = "保存", 2000);
-        }
-      }).catch(() => {
-        btn.textContent = "❌";
-        btn.disabled = false;
-        setTimeout(() => btn.textContent = "保存", 2000);
-      });
     };
   } else if (state === "error") {
     container.style.borderLeft = "4px solid #f56565";
@@ -395,32 +367,21 @@ async function showResultModal(imageUrl, prompt, debugData) {
   const downloadBtn = document.getElementById("ai-draw-download");
   if (downloadBtn) {
     downloadBtn.onclick = () => {
+      // 使用浏览器默认下载功能
+      const link = document.createElement("a");
+      link.href = imageUrl;
+      link.download = `ai-generated-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // 显示下载提示
       const btn = downloadBtn;
       const originalText = btn.textContent;
-      btn.textContent = "⌛";
-      btn.disabled = true;
-
-      chrome.runtime.sendMessage({
-        action: "saveImage",
-        imageUrl: imageUrl,
-        prompt: prompt
-      }).then((res) => {
-        if (res && res.success) {
-          btn.textContent = "✅ 已保存";
-          setTimeout(() => {
-            btn.textContent = originalText;
-            btn.disabled = false;
-          }, 2000);
-        } else {
-          btn.textContent = "❌ 失败";
-          btn.disabled = false;
-          setTimeout(() => btn.textContent = originalText, 2000);
-        }
-      }).catch(() => {
-        btn.textContent = "❌ 失败";
-        btn.disabled = false;
-        setTimeout(() => btn.textContent = originalText, 2000);
-      });
+      btn.textContent = "✅ 已下载";
+      setTimeout(() => {
+        btn.textContent = originalText;
+      }, 2000);
     };
   }
 

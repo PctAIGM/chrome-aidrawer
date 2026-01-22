@@ -11,8 +11,6 @@ const defaultSettings = {
   maxHistory: 100,
   useNotifications: true,
   imagesPerRow: 4,
-  autoSaveImages: false,
-  savePath: "",
   // 图片上传服务配置
   imageUploadServices: [], // 上传服务列表
   // 服务商模板配置
@@ -94,18 +92,6 @@ function applySettingsToUI(settings) {
 
   const allowNSFWCheckbox = document.getElementById("allowNSFW");
   if (allowNSFWCheckbox) allowNSFWCheckbox.checked = !!settings.allowNSFW;
-
-  const autoSaveImagesCheckbox = document.getElementById("autoSaveImages");
-  if (autoSaveImagesCheckbox) {
-    autoSaveImagesCheckbox.checked = !!settings.autoSaveImages;
-    // 显示/隐藏保存路径输入框
-    const savePathGroup = document.getElementById("savePathGroup");
-    if (savePathGroup)
-      savePathGroup.style.display = settings.autoSaveImages ? "block" : "none";
-  }
-
-  const savePathInput = document.getElementById("savePath");
-  if (savePathInput) savePathInput.value = settings.savePath || "";
 
   // WebDAV 配置回显
   const webdavUrlInput = document.getElementById("webdavUrl");
@@ -357,15 +343,6 @@ function setupEventListeners() {
           editModeConfig.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
       });
-    });
-  }
-
-  // 自动保存图片切换逻辑
-  const autoSaveToggle = document.getElementById("autoSaveImages");
-  const savePathGroup = document.getElementById("savePathGroup");
-  if (autoSaveToggle && savePathGroup) {
-    autoSaveToggle.addEventListener("change", (e) => {
-      savePathGroup.style.display = e.target.checked ? "block" : "none";
     });
   }
 
@@ -948,8 +925,6 @@ async function saveAllSettings() {
   const allowNSFW = document.getElementById("allowNSFW").checked;
   const imagesPerRow =
     parseInt(document.getElementById("imagesPerRow").value) || 4;
-  const autoSaveImages = document.getElementById("autoSaveImages").checked;
-  const savePath = document.getElementById("savePath").value.trim();
 
   // WebDAV 配置
   const webdavUrl = document.getElementById("webdavUrl").value.trim();
@@ -972,8 +947,6 @@ async function saveAllSettings() {
       useNotifications,
       allowNSFW,
       imagesPerRow,
-      autoSaveImages,
-      savePath,
       webdavUrl,
       webdavUsername,
       webdavPassword,
