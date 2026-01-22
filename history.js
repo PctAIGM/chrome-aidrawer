@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
 let historyData = [];
 let filteredData = [];
 let selectedItems = new Set();
+let localNSFWSetting = null; // 本地NSFW设置，null表示使用全局设置
 
 async function loadHistory() {
   const loading = document.querySelector(".loading");
@@ -17,10 +18,13 @@ async function loadHistory() {
     const response = await chrome.runtime.sendMessage({ action: "getHistory" });
     historyData = response.history || [];
     filteredData = [...historyData];
-    
+
+    // 初始化NSFW设置
+    await initializeNSFWSetting();
+
     // 检查上传服务并显示上传按钮
     await checkUploadServiceAndShowButtons();
-    
+
     renderGallery();
   } catch (error) {
     console.error("加载历史记录失败:", error);
@@ -53,7 +57,8 @@ function renderGallery() {
     // 获取设置
     chrome.runtime.sendMessage({ action: "getSettings" }).then((settings) => {
       const imagesPerRow = settings.imagesPerRow || 4;
-      const allowNSFW = !!settings.allowNSFW;
+      // 使用本地NSFW设置，如果为null则使用全局设置
+      const allowNSFW = localNSFWSetting !== null ? localNSFWSetting : !!settings.allowNSFW;
 
       gallery.style.display = "grid";
       gallery.style.gridTemplateColumns = `repeat(${imagesPerRow}, 1fr)`;
@@ -141,7 +146,7 @@ function createHistoryCard(item, allowNSFW) {
     <div class="card-actions">
       <button class="action-btn copy-btn" title="复制到剪贴板">复制</button>
       <button class="action-btn download-btn" title="下载图片">下载</button>
-      <button class="action-btn upload-btn" title="分享到相册" style="display: none;">🔗</button>
+      <button class="action-btn upload-btn" title="分享到相册">分享</button>
       <button class="action-btn delete-btn" title="删除">删除</button>
     </div>
   `;
@@ -195,15 +200,36 @@ function createHistoryCard(item, allowNSFW) {
   // 为图片添加错误处理事件监听器
   const images = card.querySelectorAll('img');
   images.forEach(img => {
-    img.addEventListener('error', function() {
+    img.addEventListener('error', function () {
+      console.log('图片错误事件触发:', this.src, this.dataset.errorType);
       handleImageError(this, this.dataset.errorType);
     });
+    
+    img.addEventListener('load', function () {
+      console.log('图片加载成功:', this.src);
+    });
+    
+    // 检查图片是否已经加载失败（对于已经在缓存中的404图片）
+    if (img.complete && img.naturalWidth === 0) {
+      console.log('检测到图片已经加载失败:', img.src, img.dataset.errorType);
+      handleImageError(img, img.dataset.errorType);
+    }
+    
+    // 对于原图，额外添加一个延迟检查
+    if (img.dataset.errorType === 'original') {
+      setTimeout(() => {
+        if (img.complete && img.naturalWidth === 0) {
+          console.log('延迟检查发现原图加载失败:', img.src);
+          handleImageError(img, img.dataset.errorType);
+        }
+      }, 1000);
+    }
   });
 
   // 为重试按钮添加事件监听器
   const retryButtons = card.querySelectorAll('.retry-btn[data-retry-type="card"]');
   retryButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', function () {
       retryLoadImage(this);
     });
   });
@@ -420,19 +446,19 @@ function openModal(item) {
         </div>
       `;
     }
-    
+
     // 为新创建的图片添加错误处理事件监听器
     const modalImages = viewer.querySelectorAll('img');
     modalImages.forEach(img => {
-      img.addEventListener('error', function() {
+      img.addEventListener('error', function () {
         handleImageError(this, this.dataset.errorType);
       });
     });
-    
+
     // 为重试按钮添加事件监听器
     const retryButtons = viewer.querySelectorAll('.retry-btn[data-retry-type="modal"]');
     retryButtons.forEach(btn => {
-      btn.addEventListener('click', function() {
+      btn.addEventListener('click', function () {
         retryLoadImage(this);
       });
     });
@@ -629,6 +655,15 @@ function setupEventListeners() {
   if (exportBtn) {
     exportBtn.addEventListener("click", exportSelectedImages);
   }
+
+  // NSFW开关
+  const nsfwToggle = document.getElementById("nsfwToggle");
+  if (nsfwToggle) {
+    nsfwToggle.addEventListener("change", (e) => {
+      localNSFWSetting = e.target.checked;
+      renderGallery();
+    });
+  }
 }
 
 function escapeHtml(text) {
@@ -681,13 +716,13 @@ async function fetchBlobWithFallback(url) {
       return await response.blob();
     } catch (error) {
       console.warn("Base64 URL fetch失败，尝试手动转换:", error);
-      
+
       // 手动转换base64为blob的备用方法
       try {
         const [header, base64Data] = url.split(',');
         const mimeMatch = header.match(/data:([^;]+)/);
         const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-        
+
         const byteCharacters = atob(base64Data);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -728,20 +763,133 @@ async function fetchBlobWithFallback(url) {
 // 图片加载错误处理
 function handleImageError(img, type) {
   console.warn(`图片加载失败 (${type}):`, img.src);
+  console.log('handleImageError 被调用，类型:', type);
+
+  // 特殊处理：如果是改图卡片的原图加载失败，转换为单图显示
+  if (type === 'original') {
+    console.log('检测到原图加载失败，开始处理...');
+    
+    const card = img.closest('.history-card');
+    const cardImage = card ? card.querySelector('.card-image') : null;
+    const resultImg = card ? card.querySelector('.image-container.result img') : null;
+    const nsfwOverlay = card ? card.querySelector('.nsfw-overlay') : null;
+    
+    console.log('找到的元素:', {
+      card: !!card,
+      cardImage: !!cardImage,
+      resultImg: !!resultImg,
+      resultImgSrc: resultImg ? resultImg.src : 'null'
+    });
+    
+    if (card && cardImage && resultImg) {
+      console.log('原图加载失败，转换为单图显示模式');
+      
+      // 保存NSFW遮罩HTML（如果存在）
+      const nsfwOverlayHtml = nsfwOverlay ? nsfwOverlay.outerHTML : '';
+      
+      // 重新构建为单图模式
+      cardImage.innerHTML = `
+        <img src="${resultImg.src}" alt="${resultImg.alt || '改图结果'}" loading="lazy" data-error-type="single">
+        <div class="image-error" style="display: none;">
+          <div class="error-icon">🖼️</div>
+          <div class="error-text">图片已失效</div>
+          <button class="retry-btn" data-retry-type="card">重试</button>
+        </div>
+        ${nsfwOverlayHtml}
+      `;
+      
+      // 移除双图样式类
+      cardImage.classList.remove('dual-image');
+      
+      console.log('HTML重构完成，移除dual-image类');
+      
+      // 为新的图片添加错误处理事件监听器
+      const newImg = cardImage.querySelector('img');
+      if (newImg) {
+        newImg.addEventListener('error', function () {
+          console.log('新图片也加载失败');
+          handleImageError(this, this.dataset.errorType);
+        });
+        console.log('为新图片绑定错误处理事件');
+      }
+      
+      // 为新的重试按钮添加事件监听器
+      const newRetryBtn = cardImage.querySelector('.retry-btn[data-retry-type="card"]');
+      if (newRetryBtn) {
+        newRetryBtn.addEventListener('click', function () {
+          retryLoadImage(this);
+        });
+        console.log('为新重试按钮绑定点击事件');
+      }
+      
+      return; // 提前返回，不执行下面的通用错误处理
+    } else {
+      console.error('未找到必要的DOM元素，无法转换为单图模式');
+    }
+  }
+
+  // 特殊处理：如果是模态框中的原图加载失败，转换为单图显示
+  if (type === 'modal-original') {
+    const viewer = document.getElementById("modalImageViewer");
+    const resultImg = viewer ? viewer.querySelector('img[data-error-type="modal-result"]') : null;
+    
+    if (viewer && resultImg) {
+      console.log('模态框原图加载失败，转换为单图显示模式');
+      
+      // 重新构建为单图模式
+      viewer.innerHTML = `
+        <div style="position: relative;">
+          <img id="modalImage" 
+               src="${resultImg.src}" 
+               alt="改图结果" 
+               style="width: 100%; max-height: 60vh; object-fit: contain; display: block;"
+               data-error-type="modal-single">
+          <div class="modal-image-error" style="display: none;">
+            <div style="padding: 60px; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 8px;">
+              <div style="font-size: 48px; margin-bottom: 16px;">🖼️</div>
+              <div style="font-size: 16px; margin-bottom: 16px;">图片已失效</div>
+              <button class="retry-btn" data-retry-type="modal" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 为新的图片添加错误处理事件监听器
+      const newImg = viewer.querySelector('img');
+      if (newImg) {
+        newImg.addEventListener('error', function () {
+          handleImageError(this, this.dataset.errorType);
+        });
+      }
+      
+      // 为新的重试按钮添加事件监听器
+      const newRetryBtn = viewer.querySelector('.retry-btn[data-retry-type="modal"]');
+      if (newRetryBtn) {
+        newRetryBtn.addEventListener('click', function () {
+          retryLoadImage(this);
+        });
+      }
+      
+      return; // 提前返回，不执行下面的通用错误处理
+    }
+  }
+
+  // 通用错误处理逻辑
+  console.log('执行通用错误处理逻辑');
   
   // 隐藏图片，显示错误提示
   img.style.display = 'none';
-  
+
   // 找到对应的错误提示元素
   const container = img.closest('.image-container') || img.closest('.card-image') || img.closest('div');
-  const errorDiv = container.querySelector('.image-error, .modal-image-error');
-  
+  const errorDiv = container ? container.querySelector('.image-error, .modal-image-error') : null;
+
   if (errorDiv) {
     errorDiv.style.display = 'flex';
     errorDiv.style.flexDirection = 'column';
     errorDiv.style.alignItems = 'center';
     errorDiv.style.justifyContent = 'center';
-    
+
     // 对于卡片中的错误提示
     if (errorDiv.classList.contains('image-error')) {
       errorDiv.style.height = '150px';
@@ -752,10 +900,14 @@ function handleImageError(img, type) {
       errorDiv.style.fontSize = '12px';
       errorDiv.style.textAlign = 'center';
     }
-    
+
     // 存储原始URL以便重试
     errorDiv.dataset.originalSrc = img.src;
     errorDiv.dataset.originalAlt = img.alt;
+    
+    console.log('显示错误提示');
+  } else {
+    console.error('未找到错误提示元素');
   }
 }
 
@@ -765,13 +917,13 @@ async function checkUploadServiceAndShowButtons() {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
     const uploadServices = response.imageUploadServices || [];
     const hasActiveUploadService = uploadServices.some(service => service.isActive);
-    
+
     // 显示或隐藏所有上传按钮
     const uploadButtons = document.querySelectorAll('.upload-btn');
     uploadButtons.forEach(btn => {
       btn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
     });
-    
+
     // 显示或隐藏模态框中的上传按钮
     const modalUploadBtn = document.getElementById("modalUploadBtn");
     if (modalUploadBtn) {
@@ -786,7 +938,7 @@ async function checkUploadServiceAndShowButtons() {
 async function uploadImageToAlbum(item) {
   const uploadBtn = event.target;
   const originalText = uploadBtn.textContent;
-  
+
   uploadBtn.disabled = true;
   uploadBtn.textContent = "上传中...";
 
@@ -816,15 +968,15 @@ function retryLoadImage(button) {
   const errorDiv = button.closest('.image-error, .modal-image-error');
   const container = errorDiv.closest('.image-container') || errorDiv.closest('.card-image') || errorDiv.closest('div');
   const img = container.querySelector('img');
-  
+
   if (errorDiv && img) {
     const originalSrc = errorDiv.dataset.originalSrc;
     const originalAlt = errorDiv.dataset.originalAlt;
-    
+
     // 显示加载状态
     button.textContent = '加载中...';
     button.disabled = true;
-    
+
     // 重新设置图片源
     img.onload = () => {
       // 加载成功，隐藏错误提示，显示图片
@@ -833,12 +985,12 @@ function retryLoadImage(button) {
       button.textContent = '重试';
       button.disabled = false;
     };
-    
+
     img.onerror = () => {
       // 加载仍然失败
       button.textContent = '重试';
       button.disabled = false;
-      
+
       // 可以考虑显示更详细的错误信息
       const errorText = errorDiv.querySelector('.error-text');
       if (errorText) {
@@ -851,9 +1003,36 @@ function retryLoadImage(button) {
         }
       }
     };
-    
+
     // 添加时间戳避免缓存
     const separator = originalSrc.includes('?') ? '&' : '?';
     img.src = originalSrc + separator + 't=' + Date.now();
   }
 }
+
+// 初始化NSFW设置
+async function initializeNSFWSetting() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const globalAllowNSFW = !!response.allowNSFW;
+    
+    // 重置本地设置为null，表示使用全局设置
+    localNSFWSetting = null;
+    
+    // 更新开关状态为全局设置值
+    const nsfwToggle = document.getElementById("nsfwToggle");
+    if (nsfwToggle) {
+      nsfwToggle.checked = globalAllowNSFW;
+    }
+  } catch (error) {
+    console.error("初始化NSFW设置失败:", error);
+    // 默认不显示敏感内容
+    localNSFWSetting = false;
+    const nsfwToggle = document.getElementById("nsfwToggle");
+    if (nsfwToggle) {
+      nsfwToggle.checked = false;
+    }
+  }
+}
+
+

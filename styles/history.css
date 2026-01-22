@@ -151,6 +151,38 @@ header h1 {
     cursor: pointer;
 }
 
+.nsfw-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    transition: all 0.2s;
+}
+
+.nsfw-toggle-label:hover {
+    background: #e9ecef;
+    border-color: #ced4da;
+}
+
+.nsfw-toggle-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #dc3545;
+}
+
+.nsfw-toggle-label input[type="checkbox"]:checked + span {
+    color: #dc3545;
+    font-weight: 500;
+}
+
 .gallery {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
