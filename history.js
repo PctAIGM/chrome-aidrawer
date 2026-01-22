@@ -4,38 +4,48 @@ document.addEventListener("DOMContentLoaded", () => {
   loadHistory();
   setupEventListeners();
   setupImageErrorObserver();
-  startPeriodicImageCheck();
 });
 
-// 定期检查页面中的失败图片
-function startPeriodicImageCheck() {
-  setInterval(() => {
-    const images = document.querySelectorAll('img[data-error-type]');
-    images.forEach(img => {
-      // 检查是否是失败的图片但还没有被处理
-      if (img.complete && img.naturalWidth === 0 && img.style.display !== 'none') {
-        console.log('定期检查发现失败图片:', img.src, img.dataset.errorType);
-        handleImageError(img, img.dataset.errorType);
-      }
-    });
-  }, 3000); // 每3秒检查一次
-}
+
 
 // 调试功能：手动触发404处理（开发时使用）
 function debugTrigger404Handling() {
   console.log('🔧 手动触发404处理测试');
-  const originalImages = document.querySelectorAll('img[data-error-type="original"]');
-  console.log('找到原图数量:', originalImages.length);
+  const allImages = document.querySelectorAll('img[data-error-type]');
+  console.log('找到图片数量:', allImages.length);
   
-  originalImages.forEach((img, index) => {
-    console.log(`测试原图 ${index + 1}:`, img.src);
+  allImages.forEach((img, index) => {
+    console.log(`测试图片 ${index + 1}:`, img.src, img.dataset.errorType);
     // 模拟404错误
-    handleImageError(img, 'original');
+    handleImageError(img, img.dataset.errorType);
   });
 }
 
-// 在控制台暴露调试函数
-window.debugTrigger404Handling = debugTrigger404Handling;
+// 调试功能：检查页面中所有图片的状态
+function debugCheckImageStatus() {
+  console.log('🔧 检查页面中所有图片的状态');
+  const allImages = document.querySelectorAll('img[data-error-type]');
+  console.log('找到图片数量:', allImages.length);
+  
+  allImages.forEach((img, index) => {
+    console.log(`图片 ${index + 1}:`, {
+      src: img.src,
+      type: img.dataset.errorType,
+      complete: img.complete,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      failed: img.complete && img.naturalWidth === 0,
+      visible: img.style.display !== 'none'
+    });
+    
+    // 如果图片加载失败，自动触发处理
+    if (img.complete && img.naturalWidth === 0 && img.style.display !== 'none') {
+      console.log(`自动处理失败的图片 ${index + 1}`);
+      handleImageError(img, img.dataset.errorType);
+    }
+  });
+}
+
 
 // 设置图片错误监听器，用于检测动态添加的图片
 function setupImageErrorObserver() {
@@ -81,6 +91,8 @@ function setupImageErrorHandling(img) {
     handleImageError(img, img.dataset.errorType);
   }
 }
+
+
 
 let historyData = [];
 let filteredData = [];
@@ -277,7 +289,7 @@ function createHistoryCard(item, allowNSFW) {
   // 为图片添加错误处理事件监听器
   const images = card.querySelectorAll('img');
   images.forEach(img => {
-    // 添加多种错误检测方法
+    // 添加基本的错误检测
     img.addEventListener('error', function () {
       console.log('图片错误事件触发:', this.src, this.dataset.errorType);
       handleImageError(this, this.dataset.errorType);
@@ -285,50 +297,12 @@ function createHistoryCard(item, allowNSFW) {
     
     img.addEventListener('load', function () {
       console.log('图片加载成功:', this.src);
-      // 即使load事件触发，也要检查图片是否真的加载成功
-      // 某些情况下，404页面可能会触发load事件
-      setTimeout(() => {
-        if (this.naturalWidth === 0 || this.naturalHeight === 0) {
-          console.log('Load事件触发但图片尺寸为0，判定为加载失败:', this.src);
-          handleImageError(this, this.dataset.errorType);
-        }
-      }, 100);
     });
     
     // 检查图片是否已经加载失败（对于已经在缓存中的404图片）
     if (img.complete && img.naturalWidth === 0) {
       console.log('检测到图片已经加载失败:', img.src, img.dataset.errorType);
       handleImageError(img, img.dataset.errorType);
-    }
-    
-    // 对于原图，额外添加多个延迟检查
-    if (img.dataset.errorType === 'original') {
-      // 短延迟检查
-      setTimeout(() => {
-        if (img.complete && img.naturalWidth === 0) {
-          console.log('延迟检查发现原图加载失败:', img.src);
-          handleImageError(img, img.dataset.errorType);
-        }
-      }, 500);
-      
-      // 长延迟检查，确保捕获慢速网络的404
-      setTimeout(() => {
-        if (img.complete && img.naturalWidth === 0) {
-          console.log('长延迟检查发现原图加载失败:', img.src);
-          handleImageError(img, img.dataset.errorType);
-        }
-      }, 2000);
-      
-      // 使用Image对象进行额外验证
-      const testImg = new Image();
-      testImg.onload = () => {
-        console.log('测试图片加载成功:', img.src);
-      };
-      testImg.onerror = () => {
-        console.log('测试图片加载失败，触发错误处理:', img.src);
-        handleImageError(img, img.dataset.errorType);
-      };
-      testImg.src = img.src;
     }
   });
 
@@ -868,134 +842,7 @@ async function fetchBlobWithFallback(url) {
 }
 // 图片加载错误处理
 function handleImageError(img, type) {
-  console.warn(`图片加载失败 (${type}):`, img.src);
-  console.log('handleImageError 被调用，类型:', type);
-  console.log('图片元素信息:', {
-    src: img.src,
-    complete: img.complete,
-    naturalWidth: img.naturalWidth,
-    naturalHeight: img.naturalHeight
-  });
-
-  // 特殊处理：如果是改图卡片的原图加载失败，转换为单图显示
-  if (type === 'original') {
-    console.log('检测到原图加载失败，开始处理...');
-    
-    const card = img.closest('.history-card');
-    const cardImage = card ? card.querySelector('.card-image') : null;
-    const resultImg = card ? card.querySelector('.image-container.result img') : null;
-    const nsfwOverlay = card ? card.querySelector('.nsfw-overlay') : null;
-    
-    console.log('找到的元素:', {
-      card: !!card,
-      cardImage: !!cardImage,
-      cardImageClasses: cardImage ? cardImage.className : 'null',
-      resultImg: !!resultImg,
-      resultImgSrc: resultImg ? resultImg.src : 'null'
-    });
-    
-    if (card && cardImage && resultImg && cardImage.classList.contains('dual-image')) {
-      console.log('原图加载失败，转换为单图显示模式');
-      
-      // 保存NSFW遮罩HTML（如果存在）
-      const nsfwOverlayHtml = nsfwOverlay ? nsfwOverlay.outerHTML : '';
-      
-      // 重新构建为单图模式
-      cardImage.innerHTML = `
-        <img src="${resultImg.src}" alt="${resultImg.alt || '改图结果'}" loading="lazy" data-error-type="single">
-        <div class="image-error" style="display: none;">
-          <div class="error-icon">🖼️</div>
-          <div class="error-text">图片已失效</div>
-          <button class="retry-btn" data-retry-type="card">重试</button>
-        </div>
-        ${nsfwOverlayHtml}
-      `;
-      
-      // 移除双图样式类
-      cardImage.classList.remove('dual-image');
-      
-      console.log('HTML重构完成，移除dual-image类');
-      
-      // 为新的图片添加错误处理事件监听器
-      const newImg = cardImage.querySelector('img');
-      if (newImg) {
-        newImg.addEventListener('error', function () {
-          console.log('新图片也加载失败');
-          handleImageError(this, this.dataset.errorType);
-        });
-        console.log('为新图片绑定错误处理事件');
-      }
-      
-      // 为新的重试按钮添加事件监听器
-      const newRetryBtn = cardImage.querySelector('.retry-btn[data-retry-type="card"]');
-      if (newRetryBtn) {
-        newRetryBtn.addEventListener('click', function () {
-          retryLoadImage(this);
-        });
-        console.log('为新重试按钮绑定点击事件');
-      }
-      
-      // 添加成功转换的标记
-      console.log('✅ 成功将双图卡片转换为单图显示');
-      return; // 提前返回，不执行下面的通用错误处理
-    } else {
-      console.error('未找到必要的DOM元素或卡片不是双图模式，无法转换为单图模式', {
-        cardExists: !!card,
-        cardImageExists: !!cardImage,
-        isDualImage: cardImage ? cardImage.classList.contains('dual-image') : false,
-        resultImgExists: !!resultImg
-      });
-    }
-  }
-
-  // 特殊处理：如果是模态框中的原图加载失败，转换为单图显示
-  if (type === 'modal-original') {
-    const viewer = document.getElementById("modalImageViewer");
-    const resultImg = viewer ? viewer.querySelector('img[data-error-type="modal-result"]') : null;
-    
-    if (viewer && resultImg) {
-      console.log('模态框原图加载失败，转换为单图显示模式');
-      
-      // 重新构建为单图模式
-      viewer.innerHTML = `
-        <div style="position: relative;">
-          <img id="modalImage" 
-               src="${resultImg.src}" 
-               alt="改图结果" 
-               style="width: 100%; max-height: 60vh; object-fit: contain; display: block;"
-               data-error-type="modal-single">
-          <div class="modal-image-error" style="display: none;">
-            <div style="padding: 60px; text-align: center; color: #6c757d; background: #f8f9fa; border-radius: 8px;">
-              <div style="font-size: 48px; margin-bottom: 16px;">🖼️</div>
-              <div style="font-size: 16px; margin-bottom: 16px;">图片已失效</div>
-              <button class="retry-btn" data-retry-type="modal" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">重试</button>
-            </div>
-          </div>
-        </div>
-      `;
-      
-      // 为新的图片添加错误处理事件监听器
-      const newImg = viewer.querySelector('img');
-      if (newImg) {
-        newImg.addEventListener('error', function () {
-          handleImageError(this, this.dataset.errorType);
-        });
-      }
-      
-      // 为新的重试按钮添加事件监听器
-      const newRetryBtn = viewer.querySelector('.retry-btn[data-retry-type="modal"]');
-      if (newRetryBtn) {
-        newRetryBtn.addEventListener('click', function () {
-          retryLoadImage(this);
-        });
-      }
-      
-      return; // 提前返回，不执行下面的通用错误处理
-    }
-  }
-
-  // 通用错误处理逻辑
-  console.log('执行通用错误处理逻辑');
+  console.log(`图片加载失败 (${type}):`, img.src);
   
   // 隐藏图片，显示错误提示
   img.style.display = 'none';
@@ -1010,8 +857,27 @@ function handleImageError(img, type) {
     errorDiv.style.alignItems = 'center';
     errorDiv.style.justifyContent = 'center';
 
-    // 对于卡片中的错误提示
-    if (errorDiv.classList.contains('image-error')) {
+    // 对于双图模式中的错误提示，确保样式正确
+    const isDualImage = container.closest('.dual-image');
+    if (isDualImage && errorDiv.classList.contains('image-error')) {
+      // 双图模式下的特殊处理
+      errorDiv.style.position = 'absolute';
+      errorDiv.style.top = '0';
+      errorDiv.style.left = '0';
+      errorDiv.style.right = '0';
+      errorDiv.style.bottom = '0';
+      errorDiv.style.height = 'auto';
+      errorDiv.style.minHeight = '120px';
+      errorDiv.style.margin = '0';
+      errorDiv.style.zIndex = '10';
+      
+      // 隐藏图片标签，避免遮挡按钮
+      const imageLabel = container.querySelector('.image-label');
+      if (imageLabel) {
+        imageLabel.style.display = 'none';
+      }
+    } else if (errorDiv.classList.contains('image-error')) {
+      // 单图模式下的处理
       errorDiv.style.height = '150px';
       errorDiv.style.backgroundColor = '#f8f9fa';
       errorDiv.style.border = '2px dashed #dee2e6';
@@ -1138,6 +1004,15 @@ function retryLoadImage(button) {
       img.style.display = 'block';
       button.textContent = '重试';
       button.disabled = false;
+      
+      // 如果是双图模式，恢复图片标签的显示
+      const isDualImage = container.closest('.dual-image');
+      if (isDualImage) {
+        const imageLabel = container.querySelector('.image-label');
+        if (imageLabel) {
+          imageLabel.style.display = 'block';
+        }
+      }
     };
 
     img.onerror = () => {
@@ -1188,5 +1063,17 @@ async function initializeNSFWSetting() {
     }
   }
 }
+
+// 在控制台暴露调试函数（放在文件最后确保所有函数都已定义）
+window.debugTrigger404Handling = debugTrigger404Handling;
+window.debugCheckImageStatus = debugCheckImageStatus;
+
+// 简单的测试函数
+window.testDebugFunctions = function() {
+  console.log('🧪 测试调试函数是否可用');
+  console.log('debugTrigger404Handling:', typeof debugTrigger404Handling);
+  console.log('debugCheckImageStatus:', typeof debugCheckImageStatus);
+  return 'Debug functions test completed';
+};
 
 

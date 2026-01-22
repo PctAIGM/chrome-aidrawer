@@ -380,11 +380,13 @@ header h1 {
     gap: 8px;
     padding: 12px;
     background: #f8f9fa;
+    min-height: 140px; /* 确保双图容器有足够高度 */
 }
 
 .card-image.dual-image .image-container {
     flex: 1;
     position: relative;
+    min-height: 120px; /* 确保每个图片容器有最小高度 */
 }
 
 .card-image.dual-image .image-container img {
@@ -410,12 +412,14 @@ header h1 {
     padding: 2px 8px;
     border-radius: 10px;
     font-weight: 500;
+    z-index: 1; /* 设置较低的z-index，让错误提示能覆盖它 */
 }
 
 .card-image.dual-image .arrow {
     font-size: 20px;
     color: #667eea;
     font-weight: bold;
+    flex-shrink: 0; /* 防止箭头被压缩 */
 }
 
 /* NSFW 模糊样式 */
@@ -696,6 +700,7 @@ header h1 {
 /* 双图模式下的错误处理 */
 .dual-image .image-container {
     position: relative;
+    min-height: 120px; /* 确保容器有最小高度 */
 }
 
 .dual-image .image-error {
@@ -705,6 +710,9 @@ header h1 {
     right: 0;
     bottom: 0;
     margin: 0;
+    height: auto; /* 让高度自适应容器 */
+    min-height: 120px; /* 与图片高度一致 */
+    z-index: 10; /* 设置高z-index确保覆盖图片标签 */
 }
 
 /* 单图模式下的错误处理 */
