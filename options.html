@@ -437,13 +437,7 @@
                                     <span class="hint">例如: expiration=600 (imgbb图片10分钟后删除)</span>
                                 </div>
 
-                                <div class="form-group full-width">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="uploadServiceIgnoreExpiration" />
-                                        <span>📁 上传到相册时忽略过期参数</span>
-                                    </label>
-                                    <span class="hint">勾选后，上传到相册时会自动移除expiration等过期相关参数，避免图片被自动删除</span>
-                                </div>
+
                             </div>
 
                             <div class="form-actions right">
@@ -465,36 +459,6 @@
                                 
                                 <p style="margin-top: 16px;"><strong>配置示例：</strong></p>
                                 
-                                <h4>1. PicGo.net 图床</h4>
-                                <div style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
-                                    端点: https://www.picgo.net/api/1/upload<br>
-                                    认证方式: Header<br>
-                                    认证Header名: X-API-Key<br>
-                                    文件字段名: source<br>
-                                    响应路径: image.url<br>
-                                    响应格式: JSON
-                                </div>
-                                
-                                <h4>2. SM.MS 图床</h4>
-                                <div style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
-                                    端点: https://sm.ms/api/v2/upload<br>
-                                    认证方式: Bearer Token<br>
-                                    文件字段名: smfile<br>
-                                    响应路径: data.url<br>
-                                    响应格式: JSON
-                                </div>
-                                
-                                <h4>3. ImgBB 图床</h4>
-                                <div style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
-                                    端点: https://api.imgbb.com/1/upload<br>
-                                    认证方式: 参数<br>
-                                    文件字段名: image<br>
-                                    响应路径: data.url<br>
-                                    响应格式: JSON<br>
-                                    自定义参数: key=你的API密钥, expiration=600 (10分钟后删除)
-                                </div>
-                                
-                                <h4>4. 通用上传服务</h4>
                                 <div style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
                                     端点: https://api.example.com/upload<br>
                                     认证方式: Bearer Token<br>
@@ -513,23 +477,23 @@
                                     <li><strong>description</strong> - 图片描述</li>
                                 </ul>
                                 
+                                <p style="margin-top: 16px;"><strong>参数使用场景：</strong></p>
+                                <ul style="margin: 8px 0; padding-left: 20px;">
+                                    <li><strong>通用</strong> - 在所有上传场景中都会使用的参数</li>
+                                    <li><strong>临时上传</strong> - 仅在改图时的临时上传中使用（如expiration参数）</li>
+                                    <li><strong>上传到相册</strong> - 仅在分享图片到相册时使用（如album参数）</li>
+                                </ul>
+                                
                                 <p style="margin-top: 16px;"><strong>使用方法：</strong></p>
                                 <ol style="margin: 8px 0; padding-left: 20px;">
                                     <li>选择合适的图床服务并获取API密钥</li>
                                     <li>点击"添加"按钮配置上传服务</li>
+                                    <li>为每个参数选择合适的使用场景</li>
                                     <li>点击服务卡片激活要使用的服务</li>
                                     <li>右键选中文字，选择改图服务</li>
                                     <li>在弹出的对话框中选择本地图片或点击"上传到图床"</li>
-                                    <li>系统会使用激活的上传服务自动上传图片</li>
+                                    <li>系统会根据使用场景自动选择相应的参数</li>
                                 </ol>
-                                
-                                <p style="margin-top: 16px;"><strong>支持的图床服务：</strong></p>
-                                <ul style="margin: 8px 0; padding-left: 20px;">
-                                    <li><strong>PicGo.net</strong> - 免费图床，支持Header认证</li>
-                                    <li><strong>SM.MS</strong> - 知名图床，需要注册获取Token</li>
-                                    <li><strong>ImgBB</strong> - 支持API上传的图床服务</li>
-                                    <li><strong>自建服务</strong> - 支持标准multipart/form-data上传的任何服务</li>
-                                </ul>
                                 
                                 <p style="margin-top: 16px;"><strong>注意事项：</strong></p>
                                 <ul style="margin: 8px 0; padding-left: 20px;">
@@ -832,6 +796,11 @@
                     class="upload-param-value"
                     placeholder="参数值 (如: 600)"
                 />
+                <select class="upload-param-usage" title="参数使用场景">
+                    <option value="common">通用</option>
+                    <option value="temp">临时上传</option>
+                    <option value="album">上传到相册</option>
+                </select>
                 <button class="btn-remove-upload-param">❌</button>
             </div>
         </template>

@@ -1710,12 +1710,17 @@ function showUploadServiceForm(service = null) {
     document.getElementById("uploadServiceResponsePath").value = service.responsePath || "image.url";
     document.getElementById("uploadServiceFieldName").value = service.fieldName || "source";
     document.getElementById("uploadServiceFormat").value = service.format || "json";
-    document.getElementById("uploadServiceIgnoreExpiration").checked = !!service.ignoreExpiration;
 
     // 加载自定义参数
     if (service.customParams) {
       Object.entries(service.customParams).forEach(([k, v]) => {
-        addUploadParameterRow(k, v);
+        // 检查是否是新格式（包含usage信息）
+        if (v && typeof v === "object" && v.value !== undefined) {
+          addUploadParameterRow(k, v.value, v.usage || "common");
+        } else {
+          // 旧格式兼容
+          addUploadParameterRow(k, v, "common");
+        }
       });
     }
   } else {
@@ -1770,15 +1775,19 @@ async function saveUploadService() {
   const responsePath = document.getElementById("uploadServiceResponsePath").value.trim() || "image.url";
   const fieldName = document.getElementById("uploadServiceFieldName").value.trim() || "source";
   const format = document.getElementById("uploadServiceFormat").value || "json";
-  const ignoreExpiration = document.getElementById("uploadServiceIgnoreExpiration").checked;
+  const ignoreExpiration = false; // 移除忽略过期参数功能
 
   // 收集自定义参数
   const customParams = {};
   document.querySelectorAll(".upload-param-row").forEach((row) => {
     const k = row.querySelector(".upload-param-key").value.trim();
     const v = row.querySelector(".upload-param-value").value.trim();
+    const usage = row.querySelector(".upload-param-usage").value;
     if (k) {
-      customParams[k] = v;
+      customParams[k] = {
+        value: v,
+        usage: usage
+      };
     }
   });
 
@@ -1954,17 +1963,19 @@ function blobToBase64(blob) {
 }
 
 // 添加上传参数行
-function addUploadParameterRow(key = "", value = "") {
+function addUploadParameterRow(key = "", value = "", usage = "common") {
   const container = document.getElementById("uploadCustomParamsList");
   const template = document.getElementById("uploadParamRowTemplate");
   const clone = template.content.cloneNode(true);
 
   const keyInput = clone.querySelector(".upload-param-key");
   const valInput = clone.querySelector(".upload-param-value");
+  const usageSelect = clone.querySelector(".upload-param-usage");
   const removeBtn = clone.querySelector(".btn-remove-upload-param");
 
   keyInput.value = key;
   valInput.value = value;
+  usageSelect.value = usage;
 
   removeBtn.addEventListener("click", (e) => {
     e.target.closest(".upload-param-row").remove();

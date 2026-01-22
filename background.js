@@ -1792,12 +1792,31 @@ async function uploadImageToService(imageData, fileName, settings) {
     formData.append('format', format);
   }
 
-  // 添加自定义参数
+  // 添加自定义参数（只使用"临时上传"和"通用"参数）
   if (imageUploadCustomParams && typeof imageUploadCustomParams === 'object') {
-    Object.entries(imageUploadCustomParams).forEach(([key, value]) => {
-      if (key && value !== undefined && value !== null && value !== '') {
-        formData.append(key, String(value));
-        console.log(`添加自定义参数: ${key} = ${value}`);
+    Object.entries(imageUploadCustomParams).forEach(([key, paramConfig]) => {
+      if (key && paramConfig !== undefined && paramConfig !== null && paramConfig !== '') {
+        let value, usage;
+        
+        // 检查是否是新格式（包含usage信息）
+        if (paramConfig && typeof paramConfig === "object" && paramConfig.value !== undefined) {
+          value = paramConfig.value;
+          usage = paramConfig.usage || "common";
+        } else {
+          // 旧格式兼容
+          value = paramConfig;
+          usage = "common";
+        }
+        
+        // 只使用"临时上传"和"通用"参数
+        if (usage === "temp" || usage === "common") {
+          if (value !== '') {
+            formData.append(key, String(value));
+            console.log(`添加临时上传参数: ${key} = ${value} (${usage})`);
+          }
+        } else {
+          console.log(`跳过参数 ${key} (仅用于${usage})`);
+        }
       }
     });
   }
@@ -1896,8 +1915,7 @@ async function uploadImageToAlbum(imageUrl, prompt, settings) {
     responsePath: imageUploadResponsePath, 
     fieldName: imageUploadFieldName,
     format: imageUploadFormat,
-    customParams: imageUploadCustomParams,
-    ignoreExpiration: imageUploadIgnoreExpiration
+    customParams: imageUploadCustomParams
   } = activeService;
 
   // 将图片URL转换为blob
@@ -1947,23 +1965,31 @@ async function uploadImageToAlbum(imageUrl, prompt, settings) {
     formData.append('format', format);
   }
 
-  // 添加自定义参数（过滤过期参数）
+  // 添加自定义参数（按使用场景筛选）
   if (imageUploadCustomParams && typeof imageUploadCustomParams === 'object') {
-    // 定义常见的过期参数名
-    const expirationParams = ['expiration', 'expire', 'expires', 'ttl', 'lifetime', 'duration'];
-    
-    Object.entries(imageUploadCustomParams).forEach(([key, value]) => {
-      if (key && value !== undefined && value !== null && value !== '') {
-        // 如果启用了忽略过期参数选项，跳过过期相关参数
-        if (imageUploadIgnoreExpiration && expirationParams.some(param => 
-          key.toLowerCase().includes(param.toLowerCase())
-        )) {
-          console.log(`跳过过期参数: ${key} = ${value}`);
-          return;
+    Object.entries(imageUploadCustomParams).forEach(([key, paramConfig]) => {
+      if (key && paramConfig !== undefined && paramConfig !== null && paramConfig !== '') {
+        let value, usage;
+        
+        // 检查是否是新格式（包含usage信息）
+        if (paramConfig && typeof paramConfig === "object" && paramConfig.value !== undefined) {
+          value = paramConfig.value;
+          usage = paramConfig.usage || "common";
+        } else {
+          // 旧格式兼容
+          value = paramConfig;
+          usage = "common";
         }
         
-        formData.append(key, String(value));
-        console.log(`添加相册上传参数: ${key} = ${value}`);
+        // 只使用"上传到相册"和"通用"参数
+        if (usage === "album" || usage === "common") {
+          if (value !== '') {
+            formData.append(key, String(value));
+            console.log(`添加相册上传参数: ${key} = ${value} (${usage})`);
+          }
+        } else {
+          console.log(`跳过参数 ${key} (仅用于${usage})`);
+        }
       }
     });
   }
@@ -1971,7 +1997,6 @@ async function uploadImageToAlbum(imageUrl, prompt, settings) {
   console.log("开始上传图片到相册:", {
     服务名称: activeService.name,
     上传端点: imageUploadUrl,
-    忽略过期参数: imageUploadIgnoreExpiration,
     提示词: prompt
   });
 
@@ -2096,10 +2121,22 @@ async function testImageUploadService(config, testImageBlob) {
 
   // 添加自定义参数
   if (customParams && typeof customParams === 'object') {
-    Object.entries(customParams).forEach(([key, value]) => {
-      if (key && value !== undefined && value !== null && value !== '') {
-        formData.append(key, String(value));
-        console.log(`测试时添加自定义参数: ${key} = ${value}`);
+    Object.entries(customParams).forEach(([key, paramConfig]) => {
+      if (key && paramConfig !== undefined && paramConfig !== null && paramConfig !== '') {
+        let value;
+        
+        // 检查是否是新格式（包含usage信息）
+        if (paramConfig && typeof paramConfig === "object" && paramConfig.value !== undefined) {
+          value = paramConfig.value;
+        } else {
+          // 旧格式兼容
+          value = paramConfig;
+        }
+        
+        if (value !== '') {
+          formData.append(key, String(value));
+          console.log(`测试时添加自定义参数: ${key} = ${value}`);
+        }
       }
     });
   }
