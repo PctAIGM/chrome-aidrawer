@@ -934,168 +934,20 @@ function showInjectedSuccessStatus(imageUrl, prompt, allowNSFW = false) {
   `;
 
   document.getElementById("ai-draw-mini-open").onclick = () => {
-    // 创建简单的图片查看弹窗
-    const modal = document.createElement("div");
-    modal.id = "ai-draw-simple-modal";
-    modal.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8); z-index: 2147483647;
-      display: flex; align-items: center; justify-content: center;
-      font-family: -apple-system, sans-serif;
-    `;
-
-    // 根据 allowNSFW 设置决定是否显示遮罩
-    const blurStyle = allowNSFW ? "" : "filter: blur(40px);";
-    const overlayHtml = allowNSFW
-      ? ""
-      : `
-      <div id="ai-draw-nsfw-overlay" style="
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        color: white; font-size: 14px; cursor: pointer; background: rgba(0,0,0,0.3);
-        border-radius: 8px;
-      ">
-        <span style="font-size: 32px; margin-bottom: 12px;">🔞</span>
-        <div style="background: rgba(0,0,0,0.4); padding: 8px 16px; border-radius: 20px;">点击查看</div>
-      </div>
-    `;
-
-    modal.innerHTML = `
-      <div style="background: white; padding: 20px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 90%; overflow: auto; text-align: center;">
-        <div id="ai-draw-img-wrapper" style="position: relative; display: inline-block; cursor: pointer;">
-          <img id="ai-draw-result-img" src="${imageUrl}" style="max-width: 100%; max-height: 70vh; border-radius: 8px; ${blurStyle}">
-          ${overlayHtml}
-        </div>
-        <div style="margin: 12px 0 16px;">
-          <button id="ai-draw-toggle-prompt" style="
-            background: transparent; border: none; color: #666; font-size: 12px;
-            cursor: pointer; text-decoration: underline; padding: 4px 8px;
-          ">显示/隐藏提示词</button>
-          <div id="ai-draw-prompt-text" style="
-            color: #666; font-size: 14px; margin-top: 8px; display: none;
-            max-height: 100px; overflow-y: auto; text-align: left; 
-            background: #f8f9fa; padding: 12px; border-radius: 6px;
-          ">${prompt}</div>
-        </div>
-        <div style="display: flex; gap: 12px; justify-content: center; align-items: center;">
-          <button id="ai-draw-share-btn" style="
-            background: #f0f0f0; color: #333; border: none; padding: 10px 12px;
-            border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 16px;
-            display: none;
-          " title="分享到相册">🔗</button>
-          <button id="ai-draw-close-btn" style="
-            background: #667eea; color: white; border: none; padding: 10px 24px;
-            border-radius: 6px; cursor: pointer; font-weight: 500;
-          ">关闭</button>
-        </div>
-      </div>
-    `;
-    modal.onclick = (e) => {
-      if (e.target === modal) modal.remove();
-    };
-    document.body.appendChild(modal);
-
-    // 绑定关闭按钮
-    document.getElementById("ai-draw-close-btn").onclick = () => modal.remove();
-
-    // 绑定提示词切换按钮
-    document.getElementById("ai-draw-toggle-prompt").onclick = () => {
-      const promptText = document.getElementById("ai-draw-prompt-text");
-      if (promptText.style.display === "none") {
-        promptText.style.display = "block";
-      } else {
-        promptText.style.display = "none";
-      }
-    };
-
-    // 检查是否有上传服务，显示分享按钮
-    // 注意：这个函数是注入到页面的，需要使用不同的方式调用chrome API
-    try {
-      chrome.runtime.sendMessage({ action: "getSettings" }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.log('获取设置失败:', chrome.runtime.lastError);
-          return;
-        }
-        
-        const uploadServices = response.imageUploadServices || [];
-        const hasActiveUploadService = uploadServices.some(service => service.isActive);
-        
-        const shareBtn = document.getElementById("ai-draw-share-btn");
-        if (shareBtn && hasActiveUploadService) {
-          shareBtn.style.display = "inline-block";
-          shareBtn.onclick = () => {
-            shareBtn.disabled = true;
-            shareBtn.textContent = "⏳";
-            
-            chrome.runtime.sendMessage({
-              action: 'uploadImageToAlbum',
-              imageUrl: imageUrl,
-              prompt: prompt
-            }, (result) => {
-              if (chrome.runtime.lastError) {
-                console.error('上传失败:', chrome.runtime.lastError);
-                shareBtn.textContent = "❌";
-                shareBtn.style.background = "#f56565";
-                shareBtn.style.color = "white";
-                setTimeout(() => {
-                  shareBtn.textContent = "🔗";
-                  shareBtn.style.background = "#f0f0f0";
-                  shareBtn.style.color = "#333";
-                  shareBtn.disabled = false;
-                }, 2000);
-                return;
-              }
-              
-              if (result && result.success) {
-                shareBtn.textContent = "✅";
-                shareBtn.style.background = "#48bb78";
-                shareBtn.style.color = "white";
-                setTimeout(() => {
-                  shareBtn.textContent = "🔗";
-                  shareBtn.style.background = "#f0f0f0";
-                  shareBtn.style.color = "#333";
-                  shareBtn.disabled = false;
-                }, 2000);
-              } else {
-                shareBtn.textContent = "❌";
-                shareBtn.style.background = "#f56565";
-                shareBtn.style.color = "white";
-                setTimeout(() => {
-                  shareBtn.textContent = "🔗";
-                  shareBtn.style.background = "#f0f0f0";
-                  shareBtn.style.color = "#333";
-                  shareBtn.disabled = false;
-                }, 2000);
-              }
-            });
-          };
-        }
-      });
-    } catch (error) {
-      console.error('检查上传服务失败:', error);
-    }
-
-    // 如果有遮罩，绑定点击揭示逻辑
-    if (!allowNSFW) {
-      const wrapper = document.getElementById("ai-draw-img-wrapper");
-      const img = document.getElementById("ai-draw-result-img");
-      const overlay = document.getElementById("ai-draw-nsfw-overlay");
-      if (wrapper) {
-        wrapper.onclick = (e) => {
-          e.stopPropagation();
-          const isBlurred = img.style.filter.includes("blur");
-          if (isBlurred) {
-            img.style.filter = "none";
-            if (overlay) overlay.style.display = "none";
-          } else {
-            img.style.filter = "blur(40px)";
-            if (overlay) overlay.style.display = "flex";
-          }
-        };
-      }
-    }
-
+    // 调用content.js中的完整模态框而不是简单模态框
     container.remove();
+    
+    // 发送消息给content script显示完整的结果模态框
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: "showResultModal",
+          imageUrl: imageUrl,
+          prompt: prompt,
+          debugData: null // 这里可以传递调试数据如果有的话
+        });
+      }
+    });
   };
 
   document.getElementById("ai-draw-mini-close").onclick = () =>

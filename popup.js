@@ -8,6 +8,37 @@ document.addEventListener("DOMContentLoaded", () => {
 let currentImageUrl = null;
 let uploadedImageUrl = null; // 存储上传后的图片URL
 
+// 格式化错误信息，处理对象类型的错误
+function formatErrorMessage(error) {
+  if (!error) return '未知错误';
+  
+  // 如果是字符串，直接返回
+  if (typeof error === 'string') return error;
+  
+  // 如果是Error对象，返回message
+  if (error instanceof Error) return error.message;
+  
+  // 如果是对象，尝试转换为JSON
+  if (typeof error === 'object') {
+    try {
+      // 如果对象有message属性，优先使用
+      if (error.message) return error.message;
+      
+      // 如果对象有error属性，递归处理
+      if (error.error) return formatErrorMessage(error.error);
+      
+      // 尝试JSON序列化
+      const jsonStr = JSON.stringify(error, null, 2);
+      return jsonStr !== '{}' ? jsonStr : '未知对象错误';
+    } catch (e) {
+      return `对象错误 (无法序列化): ${error.toString()}`;
+    }
+  }
+  
+  // 其他类型，转换为字符串
+  return String(error);
+}
+
 async function loadSettings() {
   try {
     const response = await chrome.runtime.sendMessage({
@@ -262,7 +293,7 @@ async function generateImage() {
     // 但为了这里的流程，我们可以稍等一下检查历史记录或者等待消息
   } catch (error) {
     console.error("生成失败:", error);
-    showError(error.message || "生成失败，请重试");
+    showError(formatErrorMessage(error) || "生成失败，请重试");
     setLoading(false);
   }
 }
@@ -402,23 +433,14 @@ async function uploadImage() {
       
       showUploadStatus('图片上传成功！可以开始改图了', 'success');
     } else {
-      throw new Error(result.error || '上传失败');
+      const errorMsg = formatErrorMessage(result.error || '上传失败');
+      throw new Error(errorMsg);
     }
   } catch (error) {
+    const errorMsg = formatErrorMessage(error);
     console.error('图片上传失败:', error);
-    let errorMessage = '上传失败';
-    
-    if (error.message) {
-      errorMessage = error.message;
-    } else if (typeof error === 'string') {
-      errorMessage = error;
-    } else if (error.toString && error.toString() !== '[object Object]') {
-      errorMessage = error.toString();
-    } else {
-      errorMessage = '上传失败: 未知错误';
-    }
-    
-    showUploadStatus(errorMessage, 'error');
+    console.error('格式化后的错误信息:', errorMsg);
+    showUploadStatus(errorMsg, 'error');
     uploadedImageUrl = null;
   } finally {
     uploadBtn.disabled = false;
@@ -492,7 +514,7 @@ async function copyImage() {
     showNotification("图片已复制到剪贴板");
   } catch (error) {
     console.error("复制失败:", error);
-    showNotification("复制失败，请重试", "error");
+    showNotification(formatErrorMessage(error) || "复制失败，请重试", "error");
   }
 }
 
@@ -593,11 +615,14 @@ async function uploadCurrentImageToAlbum() {
     if (result.success) {
       showNotification("图片已上传到相册！", "success");
     } else {
-      throw new Error(result.error || '上传失败');
+      const errorMsg = formatErrorMessage(result.error || '上传失败');
+      throw new Error(errorMsg);
     }
   } catch (error) {
+    const errorMsg = formatErrorMessage(error);
     console.error('上传到相册失败:', error);
-    showNotification(error.message || '上传失败', "error");
+    console.error('格式化后的错误信息:', errorMsg);
+    showNotification(errorMsg, "error");
   } finally {
     uploadBtn.disabled = false;
     uploadBtn.textContent = originalText;

@@ -3,7 +3,84 @@
 document.addEventListener("DOMContentLoaded", () => {
   loadHistory();
   setupEventListeners();
+  setupImageErrorObserver();
+  startPeriodicImageCheck();
 });
+
+// 定期检查页面中的失败图片
+function startPeriodicImageCheck() {
+  setInterval(() => {
+    const images = document.querySelectorAll('img[data-error-type]');
+    images.forEach(img => {
+      // 检查是否是失败的图片但还没有被处理
+      if (img.complete && img.naturalWidth === 0 && img.style.display !== 'none') {
+        console.log('定期检查发现失败图片:', img.src, img.dataset.errorType);
+        handleImageError(img, img.dataset.errorType);
+      }
+    });
+  }, 3000); // 每3秒检查一次
+}
+
+// 调试功能：手动触发404处理（开发时使用）
+function debugTrigger404Handling() {
+  console.log('🔧 手动触发404处理测试');
+  const originalImages = document.querySelectorAll('img[data-error-type="original"]');
+  console.log('找到原图数量:', originalImages.length);
+  
+  originalImages.forEach((img, index) => {
+    console.log(`测试原图 ${index + 1}:`, img.src);
+    // 模拟404错误
+    handleImageError(img, 'original');
+  });
+}
+
+// 在控制台暴露调试函数
+window.debugTrigger404Handling = debugTrigger404Handling;
+
+// 设置图片错误监听器，用于检测动态添加的图片
+function setupImageErrorObserver() {
+  // 创建一个观察器实例并传入回调函数
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      // 检查新添加的节点
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          // 检查节点本身是否是图片
+          if (node.tagName === 'IMG') {
+            setupImageErrorHandling(node);
+          }
+          // 检查节点内部的图片
+          const images = node.querySelectorAll ? node.querySelectorAll('img') : [];
+          images.forEach(img => setupImageErrorHandling(img));
+        }
+      });
+    });
+  });
+
+  // 开始观察
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+}
+
+// 为单个图片设置错误处理
+function setupImageErrorHandling(img) {
+  if (img.dataset.errorHandlerSetup) return; // 避免重复设置
+  
+  img.dataset.errorHandlerSetup = 'true';
+  
+  img.addEventListener('error', function () {
+    console.log('MutationObserver检测到图片错误:', this.src, this.dataset.errorType);
+    handleImageError(this, this.dataset.errorType);
+  });
+  
+  // 立即检查是否已经加载失败
+  if (img.complete && img.naturalWidth === 0) {
+    console.log('MutationObserver检测到已失败的图片:', img.src, img.dataset.errorType);
+    handleImageError(img, img.dataset.errorType);
+  }
+}
 
 let historyData = [];
 let filteredData = [];
@@ -200,6 +277,7 @@ function createHistoryCard(item, allowNSFW) {
   // 为图片添加错误处理事件监听器
   const images = card.querySelectorAll('img');
   images.forEach(img => {
+    // 添加多种错误检测方法
     img.addEventListener('error', function () {
       console.log('图片错误事件触发:', this.src, this.dataset.errorType);
       handleImageError(this, this.dataset.errorType);
@@ -207,6 +285,14 @@ function createHistoryCard(item, allowNSFW) {
     
     img.addEventListener('load', function () {
       console.log('图片加载成功:', this.src);
+      // 即使load事件触发，也要检查图片是否真的加载成功
+      // 某些情况下，404页面可能会触发load事件
+      setTimeout(() => {
+        if (this.naturalWidth === 0 || this.naturalHeight === 0) {
+          console.log('Load事件触发但图片尺寸为0，判定为加载失败:', this.src);
+          handleImageError(this, this.dataset.errorType);
+        }
+      }, 100);
     });
     
     // 检查图片是否已经加载失败（对于已经在缓存中的404图片）
@@ -215,14 +301,34 @@ function createHistoryCard(item, allowNSFW) {
       handleImageError(img, img.dataset.errorType);
     }
     
-    // 对于原图，额外添加一个延迟检查
+    // 对于原图，额外添加多个延迟检查
     if (img.dataset.errorType === 'original') {
+      // 短延迟检查
       setTimeout(() => {
         if (img.complete && img.naturalWidth === 0) {
           console.log('延迟检查发现原图加载失败:', img.src);
           handleImageError(img, img.dataset.errorType);
         }
-      }, 1000);
+      }, 500);
+      
+      // 长延迟检查，确保捕获慢速网络的404
+      setTimeout(() => {
+        if (img.complete && img.naturalWidth === 0) {
+          console.log('长延迟检查发现原图加载失败:', img.src);
+          handleImageError(img, img.dataset.errorType);
+        }
+      }, 2000);
+      
+      // 使用Image对象进行额外验证
+      const testImg = new Image();
+      testImg.onload = () => {
+        console.log('测试图片加载成功:', img.src);
+      };
+      testImg.onerror = () => {
+        console.log('测试图片加载失败，触发错误处理:', img.src);
+        handleImageError(img, img.dataset.errorType);
+      };
+      testImg.src = img.src;
     }
   });
 
@@ -764,6 +870,12 @@ async function fetchBlobWithFallback(url) {
 function handleImageError(img, type) {
   console.warn(`图片加载失败 (${type}):`, img.src);
   console.log('handleImageError 被调用，类型:', type);
+  console.log('图片元素信息:', {
+    src: img.src,
+    complete: img.complete,
+    naturalWidth: img.naturalWidth,
+    naturalHeight: img.naturalHeight
+  });
 
   // 特殊处理：如果是改图卡片的原图加载失败，转换为单图显示
   if (type === 'original') {
@@ -777,11 +889,12 @@ function handleImageError(img, type) {
     console.log('找到的元素:', {
       card: !!card,
       cardImage: !!cardImage,
+      cardImageClasses: cardImage ? cardImage.className : 'null',
       resultImg: !!resultImg,
       resultImgSrc: resultImg ? resultImg.src : 'null'
     });
     
-    if (card && cardImage && resultImg) {
+    if (card && cardImage && resultImg && cardImage.classList.contains('dual-image')) {
       console.log('原图加载失败，转换为单图显示模式');
       
       // 保存NSFW遮罩HTML（如果存在）
@@ -822,9 +935,16 @@ function handleImageError(img, type) {
         console.log('为新重试按钮绑定点击事件');
       }
       
+      // 添加成功转换的标记
+      console.log('✅ 成功将双图卡片转换为单图显示');
       return; // 提前返回，不执行下面的通用错误处理
     } else {
-      console.error('未找到必要的DOM元素，无法转换为单图模式');
+      console.error('未找到必要的DOM元素或卡片不是双图模式，无法转换为单图模式', {
+        cardExists: !!card,
+        cardImageExists: !!cardImage,
+        isDualImage: cardImage ? cardImage.classList.contains('dual-image') : false,
+        resultImgExists: !!resultImg
+      });
     }
   }
 
@@ -934,6 +1054,37 @@ async function checkUploadServiceAndShowButtons() {
   }
 }
 
+// 格式化错误信息，处理对象类型的错误
+function formatErrorMessage(error) {
+  if (!error) return '未知错误';
+  
+  // 如果是字符串，直接返回
+  if (typeof error === 'string') return error;
+  
+  // 如果是Error对象，返回message
+  if (error instanceof Error) return error.message;
+  
+  // 如果是对象，尝试转换为JSON
+  if (typeof error === 'object') {
+    try {
+      // 如果对象有message属性，优先使用
+      if (error.message) return error.message;
+      
+      // 如果对象有error属性，递归处理
+      if (error.error) return formatErrorMessage(error.error);
+      
+      // 尝试JSON序列化
+      const jsonStr = JSON.stringify(error, null, 2);
+      return jsonStr !== '{}' ? jsonStr : '未知对象错误';
+    } catch (e) {
+      return `对象错误 (无法序列化): ${error.toString()}`;
+    }
+  }
+  
+  // 其他类型，转换为字符串
+  return String(error);
+}
+
 // 上传图片到相册
 async function uploadImageToAlbum(item) {
   const uploadBtn = event.target;
@@ -952,11 +1103,14 @@ async function uploadImageToAlbum(item) {
     if (result.success) {
       showNotification("图片已上传到相册！", "success");
     } else {
-      throw new Error(result.error || '上传失败');
+      const errorMsg = formatErrorMessage(result.error || '上传失败');
+      throw new Error(errorMsg);
     }
   } catch (error) {
+    const errorMsg = formatErrorMessage(error);
     console.error('上传到相册失败:', error);
-    showNotification(error.message || '上传失败', "error");
+    console.error('格式化后的错误信息:', errorMsg);
+    showNotification(errorMsg, "error");
   } finally {
     uploadBtn.disabled = false;
     uploadBtn.textContent = originalText;

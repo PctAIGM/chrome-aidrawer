@@ -24,8 +24,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "showEditDialog") {
     showEditDialog(message.imageUrl, message.providerId, message.providerName);
+  } else if (message.action === "showResultModal") {
+    // 处理来自background.js的showResultModal请求
+    showResultModal(message.imageUrl, message.prompt, message.debugData);
   }
 });
+
+// 格式化错误信息，处理对象类型的错误
+function formatErrorMessage(error) {
+  if (!error) return '未知错误';
+  
+  // 如果是字符串，直接返回
+  if (typeof error === 'string') return error;
+  
+  // 如果是Error对象，返回message
+  if (error instanceof Error) return error.message;
+  
+  // 如果是对象，尝试转换为JSON
+  if (typeof error === 'object') {
+    try {
+      // 如果对象有message属性，优先使用
+      if (error.message) return error.message;
+      
+      // 如果对象有error属性，递归处理
+      if (error.error) return formatErrorMessage(error.error);
+      
+      // 尝试JSON序列化
+      const jsonStr = JSON.stringify(error, null, 2);
+      return jsonStr !== '{}' ? jsonStr : '未知对象错误';
+    } catch (e) {
+      return `对象错误 (无法序列化): ${error.toString()}`;
+    }
+  }
+  
+  // 其他类型，转换为字符串
+  return String(error);
+}
 
 // 在右下角显示小状态窗口
 function showMiniStatus(state, data) {
@@ -649,11 +683,14 @@ function showEditDialog(imageUrl, providerId, providerName) {
         
         showUploadStatus('图片上传成功！', 'success');
       } else {
-        throw new Error(result.error || '上传失败');
+        const errorMsg = formatErrorMessage(result.error || '上传失败');
+        throw new Error(errorMsg);
       }
     } catch (error) {
+      const errorMsg = formatErrorMessage(error);
       console.error('图片上传失败:', error);
-      showUploadStatus('上传失败: ' + error.message, 'error');
+      console.error('格式化后的错误信息:', errorMsg);
+      showUploadStatus('上传失败: ' + errorMsg, 'error');
     } finally {
       activeBtn.disabled = false;
       activeBtn.textContent = originalText;
@@ -700,11 +737,14 @@ function showEditDialog(imageUrl, providerId, providerName) {
         
         showUploadStatus('图片已上传到图床！', 'success');
       } else {
-        throw new Error(result.error || '上传失败');
+        const errorMsg = formatErrorMessage(result.error || '上传失败');
+        throw new Error(errorMsg);
       }
     } catch (error) {
+      const errorMsg = formatErrorMessage(error);
       console.error('图片上传失败:', error);
-      showUploadStatus('上传失败: ' + error.message, 'error');
+      console.error('格式化后的错误信息:', errorMsg);
+      showUploadStatus('上传失败: ' + errorMsg, 'error');
     } finally {
       reuploadBtn.disabled = false;
       reuploadBtn.textContent = originalText;
