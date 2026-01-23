@@ -8,6 +8,7 @@ A powerful Chrome browser extension that generates AI images from selected text 
 - **Right-click to draw** - Select text on a webpage, right-click, and choose "AI Drawer" to generate images
 - **Keyboard shortcut** - Use `Ctrl+Shift+D` (Mac: `Command+Shift+D`) for quick drawing
 - **Multiple providers** - Support for OpenAI DALL-E, Stability AI, Replicate, and more
+- **Real-time status** - Progress shown in bottom-right corner of the page
 
 ### ✏️ Image Editing
 - **Edit from image** - Right-click any image on a webpage to edit it
@@ -17,21 +18,34 @@ A powerful Chrome browser extension that generates AI images from selected text 
 ### 💾 Save & Manage
 - **Copy to clipboard** - One-click copy of generated images
 - **Download locally** - Save images to download directory
-- **Auto-save** - Configure auto-save to a specific folder
 - **Share to album** - Share images to image hosting services
-- **History** - Automatically save up to 100 drawing records with search and batch export
+- **History** - Automatically save up to 100 drawing records (configurable)
+- **Search history** - Search records by prompt text
+- **Batch export** - Select multiple images and export as ZIP archive
+- **Batch delete** - Quickly clear history records
+
+### 🖼️ View & Browse
+- **Large preview** - Click images in history to view full size
+- **Edit comparison** - Show original and edited image side by side
+- **View prompts** - Expand to see full prompt text
+- **NSFW filter** - Blur sensitive content by default, toggleable
 
 ### ⚙️ Advanced Configuration
 - **Multi-API** - Configure multiple image generation/editing providers
-- **Custom API** - Connect to any compatible AI image API
+- **Custom API** - Connect to any compatible REST API
 - **Async polling** - Support for async task APIs (like Replicate)
 - **Multipart upload** - Support multipart/form-data for image editing
-- **Templates** - Built-in API templates and custom template management
+- **Templates** - Built-in templates (NewAPI, etc.) and custom template management
+- **Custom parameters** - Configure request params, headers, response paths
 
 ### 🔄 Data Sync
 - **WebDAV sync** - Sync configuration to WebDAV server
 - **Encrypted export** - AES-GCM encrypted export to protect API keys
 - **Import config** - Support importing encrypted or plain-text configs
+
+### 🔧 Debugging
+- **API debug** - View complete request/response data on failure
+- **Error details** - Show detailed error messages for troubleshooting
 
 ## Installation
 
@@ -112,11 +126,11 @@ chrome-aidrawer/
 ├── history.js             # History logic
 ├── icons/                 # Extension icons
 ├── styles/                # Style files
-│   ├── history.css
-│   ├── options.css
-│   └── popup.css
+│   ├── history.css        # History page styles
+│   ├── options.css        # Options page styles
+│   └── popup.css          # Popup styles
 └── lib/                   # Third-party libraries
-    └── jszip.min.js
+    └── jszip.min.js       # ZIP compression library
 ```
 
 ## Supported APIs
@@ -164,11 +178,15 @@ chrome-aidrawer/
 
 ### v2.0.0
 - ✨ Added image editing feature
-- ?? Added image upload service configuration
+- 🔧 Added image upload service configuration
 - ✨ Added WebDAV sync feature
 - ✨ Added encrypted config export
 - ✨ Added API template management
+- ✨ Added batch export to ZIP for history
+- ✨ Added NSFW content filtering
+- ✨ Added search history feature
 - 🎨 Improved UI with file selection and upload support
+- 🎨 Improved image preview and prompt display
 - 🐛 Fixed various known issues
 
 ### v1.0.0
