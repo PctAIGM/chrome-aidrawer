@@ -369,7 +369,7 @@ function setupEventListeners() {
   const saveUploadServiceBtn = document.getElementById("saveUploadServiceBtn");
   const cancelUploadServiceBtn = document.getElementById("cancelUploadServiceBtn");
   const addUploadParamBtn = document.getElementById("addUploadParamBtn");
-  
+
   if (addUploadServiceBtn) addUploadServiceBtn.addEventListener("click", () => showUploadServiceForm());
   if (saveUploadServiceBtn) saveUploadServiceBtn.addEventListener("click", saveUploadService);
   if (cancelUploadServiceBtn) cancelUploadServiceBtn.addEventListener("click", hideUploadServiceForm);
@@ -935,7 +935,7 @@ async function saveAllSettings() {
   const securityKey = document.getElementById("securityKey").value;
 
   const response = await chrome.runtime.sendMessage({ action: "getSettings" });
-  
+
   // 图片上传服务配置 - 保持现有的服务配置
   const imageUploadServices = response.imageUploadServices || [];
 
@@ -958,7 +958,14 @@ async function saveAllSettings() {
       imageUploadServices,
     },
   });
+
   showStatus("所有设置已保存！", "success");
+
+  // 如果开启了自动同步，则保存后自动上传
+  if (webdavAutoSync) {
+    console.log("WebDAV 自动同步已开启，正在上传配置...");
+    uploadToWebDAV();
+  }
 }
 
 // Test specific provider connection (per-card test button)
@@ -1210,7 +1217,7 @@ async function importSettings(event) {
           showStatus("导入保存失败: " + error.message, "error");
         }
       });
-      
+
     } catch (error) {
       console.error("导入失败:", error);
       showStatus("导入失败: " + error.message, "error");
@@ -1357,14 +1364,14 @@ function isEncrypted(data) {
     const decoded = atob(data);
     // 加密数据包含 IV (12 bytes) + 密文，长度至少 28 bytes
     if (decoded.length < 28) return false;
-    
+
     // 如果是 Base64 且无法解析为 JSON，则极大概率是加密数据
     // (因为我们的加密数据是 Base64 编码的二进制流)
     try {
-        JSON.parse(decoded);
-        return false; // Base64 解码后是 JSON，说明是 Base64 编码的明文（不符合加密格式）
+      JSON.parse(decoded);
+      return false; // Base64 解码后是 JSON，说明是 Base64 编码的明文（不符合加密格式）
     } catch {
-        return true; // Base64 解码后不是 JSON，认为是加密数据
+      return true; // Base64 解码后不是 JSON，认为是加密数据
     }
   } catch (e) {
     return false; // 既不是 JSON 也无法 Base64 解码，视为未加密（或格式错误）
@@ -1373,7 +1380,7 @@ function isEncrypted(data) {
 
 async function testWebDAVConnection() {
   const config = getWebDAVConfig();
-  
+
   if (!config.url) {
     showWebDAVStatus("请输入 WebDAV 服务器地址", "error");
     return;
@@ -1405,16 +1412,19 @@ async function testWebDAVConnection() {
 
 async function uploadToWebDAV() {
   const config = getWebDAVConfig();
-  
+
   if (!config.url) {
     showWebDAVStatus("请输入 WebDAV 服务器地址", "error");
     return;
   }
 
   const btn = document.getElementById("webdavUploadBtn");
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "⏳";
+  let originalText = "";
+  if (btn) {
+    originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳";
+  }
 
   try {
     // 获取当前配置
@@ -1458,7 +1468,7 @@ async function uploadToWebDAV() {
 
 async function downloadFromWebDAV() {
   const config = getWebDAVConfig();
-  
+
   if (!config.url) {
     showWebDAVStatus("请输入 WebDAV 服务器地址", "error");
     return;
@@ -1496,7 +1506,7 @@ async function downloadFromWebDAV() {
       }
 
       const settings = JSON.parse(data);
-      
+
       // 简单校验
       if (!settings || typeof settings !== "object") {
         throw new Error("无效的配置文件格式");
@@ -1715,7 +1725,7 @@ function hideUploadServiceForm() {
 function clearUploadServiceForm() {
   [
     "uploadServiceName",
-    "uploadServiceUrl", 
+    "uploadServiceUrl",
     "uploadServiceKey",
     "uploadServiceHeaderName",
     "uploadServiceResponsePath",
@@ -1724,10 +1734,10 @@ function clearUploadServiceForm() {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
-  
+
   const authTypeSelect = document.getElementById("uploadServiceAuthType");
   if (authTypeSelect) authTypeSelect.value = "header";
-  
+
   const formatSelect = document.getElementById("uploadServiceFormat");
   if (formatSelect) formatSelect.value = "json";
 
@@ -1772,7 +1782,7 @@ async function saveUploadService() {
   try {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
     let services = response.imageUploadServices || [];
-    
+
     const serviceData = {
       name,
       url,
@@ -1804,7 +1814,7 @@ async function saveUploadService() {
       action: "saveSettings",
       settings: { ...response, imageUploadServices: services }
     });
-    
+
     hideUploadServiceForm();
     renderUploadServicesList(services);
     showStatus("保存成功", "success");
@@ -1821,7 +1831,7 @@ async function editUploadService(id) {
 
 async function deleteUploadService(id) {
   if (!confirm("确定要删除这个上传服务吗？")) return;
-  
+
   const response = await chrome.runtime.sendMessage({ action: "getSettings" });
   let services = (response.imageUploadServices || []).filter((s) => s.id !== id);
 
@@ -1838,7 +1848,7 @@ async function deleteUploadService(id) {
     action: "saveSettings",
     settings: { ...response, imageUploadServices: services }
   });
-  
+
   renderUploadServicesList(services);
   showStatus("上传服务已删除", "success");
 }
@@ -1851,7 +1861,7 @@ async function useUploadService(id) {
 
   currentUploadServiceId = id;
   services = services.map((s) => ({ ...s, isActive: s.id === id }));
-  
+
   await chrome.runtime.sendMessage({
     action: "saveSettings",
     settings: { ...response, imageUploadServices: services }
@@ -1895,9 +1905,9 @@ async function testUploadServiceConnection(service) {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#FF0000';
     ctx.fillRect(0, 0, 1, 1);
-    
+
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    
+
     const result = await chrome.runtime.sendMessage({
       action: "testImageUpload",
       config: {
@@ -1967,7 +1977,7 @@ function loadTemplateOptions() {
 
   // 获取所有模板（内置 + 用户自定义）
   const allTemplates = getAllTemplates();
-  
+
   allTemplates.forEach(template => {
     const option = document.createElement("option");
     option.value = template.id;
@@ -1982,7 +1992,7 @@ function getAllTemplates() {
   // 获取用户自定义模板
   const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
   const userTemplates = settings.providerTemplates || [];
-  
+
   // 合并内置模板和用户模板
   return [...builtinTemplates, ...userTemplates];
 }
@@ -1990,12 +2000,12 @@ function getAllTemplates() {
 function onTemplateChange() {
   const select = document.getElementById("providerTemplate");
   const templateId = select.value;
-  
+
   if (!templateId) return;
-  
+
   const allTemplates = getAllTemplates();
   const template = allTemplates.find(t => t.id === templateId);
-  
+
   if (template) {
     applyTemplate(template);
   }
@@ -2006,7 +2016,7 @@ function applyTemplate(template) {
   document.getElementById("providerName").value = template.name;
   document.getElementById("providerEndpoint").value = template.endpoint || "";
   document.getElementById("providerResponsePath").value = template.responsePath || "";
-  
+
   // 设置服务类型
   const serviceTypeRadio = document.querySelector(`input[name="serviceType"][value="${template.serviceType}"]`);
   if (serviceTypeRadio) {
@@ -2014,33 +2024,33 @@ function applyTemplate(template) {
     // 触发change事件以更新UI
     serviceTypeRadio.dispatchEvent(new Event('change'));
   }
-  
+
   // 设置multipart选项
   const useMultipartCheckbox = document.getElementById("providerUseMultipart");
   if (useMultipartCheckbox) {
     useMultipartCheckbox.checked = !!template.useMultipart;
     useMultipartCheckbox.dispatchEvent(new Event('change'));
   }
-  
+
   // 设置图片字段名
   const imageFieldNameInput = document.getElementById("providerImageFieldName");
   if (imageFieldNameInput) {
     imageFieldNameInput.value = template.imageFieldName || "image";
   }
-  
+
   // 清空现有参数和头部
   const containerParams = document.getElementById("customParamsList");
   const containerHeaders = document.getElementById("customHeadersList");
   if (containerParams) containerParams.innerHTML = "";
   if (containerHeaders) containerHeaders.innerHTML = "";
-  
+
   // 添加自定义头部
   if (template.customHeaders) {
     Object.entries(template.customHeaders).forEach(([k, v]) => {
       addHeaderRow(k, v);
     });
   }
-  
+
   // 添加自定义参数
   if (template.customParams) {
     Object.entries(template.customParams).forEach(([k, v]) => {
@@ -2084,7 +2094,7 @@ function applyTemplate(template) {
       addParameterRow(k, actualValue, type, fieldType);
     });
   }
-  
+
   showStatus("已应用模板配置", "success");
 }
 
@@ -2107,16 +2117,16 @@ function hideTemplateModal() {
 function loadTemplatesList() {
   const container = document.getElementById("templatesList");
   if (!container) return;
-  
+
   container.innerHTML = "";
-  
+
   const allTemplates = getAllTemplates();
-  
+
   if (allTemplates.length === 0) {
     container.innerHTML = '<p class="no-templates">暂无模板</p>';
     return;
   }
-  
+
   allTemplates.forEach(template => {
     const item = createTemplateItem(template);
     container.appendChild(item);
@@ -2126,45 +2136,45 @@ function loadTemplatesList() {
 function createTemplateItem(template) {
   const templateEl = document.getElementById("templateItemTemplate");
   const item = templateEl.content.cloneNode(true);
-  
+
   const nameEl = item.querySelector(".template-name");
   const typeEl = item.querySelector(".template-type-badge");
   const endpointEl = item.querySelector(".template-endpoint");
   const editBtn = item.querySelector(".btn-edit-template");
   const deleteBtn = item.querySelector(".btn-delete-template");
-  
+
   nameEl.textContent = template.name;
   typeEl.textContent = template.serviceType === "edit" ? "✏️ 改图" : "🎨 生图";
   typeEl.className = `template-type-badge ${template.serviceType}`;
   endpointEl.textContent = template.endpoint || "";
   endpointEl.title = template.endpoint || "";
-  
+
   // 内置模板不能删除，但可以编辑（编辑后保存为新模板）
   if (template.builtin) {
     deleteBtn.style.display = "none";
     editBtn.textContent = "✏️ 编辑";
     editBtn.title = "编辑并保存为新模板";
   }
-  
+
   editBtn.addEventListener("click", () => {
     showTemplateForm(template);
   });
-  
+
   deleteBtn.addEventListener("click", () => {
     if (confirm(`确定要删除模板"${template.name}"吗？`)) {
       deleteTemplate(template.id);
     }
   });
-  
+
   return item;
 }
 
 function showTemplateForm(template = null) {
   const formSection = document.getElementById("templateFormSection");
   const title = document.getElementById("templateFormTitle");
-  
+
   if (!formSection) return;
-  
+
   // 如果是内置模板，创建副本进行编辑
   if (template && template.builtin) {
     const newTemplate = { ...template };
@@ -2176,7 +2186,7 @@ function showTemplateForm(template = null) {
   } else {
     editingTemplateId = template ? template.id : null;
   }
-  
+
   if (template) {
     title.textContent = template.builtin ? "基于内置模板创建" : "编辑模板";
     document.getElementById("templateName").value = template.name || "";
@@ -2185,20 +2195,20 @@ function showTemplateForm(template = null) {
     document.getElementById("templateResponsePath").value = template.responsePath || "";
     document.getElementById("templateUseMultipart").checked = !!template.useMultipart;
     document.getElementById("templateImageFieldName").value = template.imageFieldName || "image";
-    
+
     // 清空现有参数和头部
     const containerParams = document.getElementById("templateParamsList");
     const containerHeaders = document.getElementById("templateHeadersList");
     if (containerParams) containerParams.innerHTML = "";
     if (containerHeaders) containerHeaders.innerHTML = "";
-    
+
     // 加载自定义头部
     if (template.customHeaders) {
       Object.entries(template.customHeaders).forEach(([k, v]) => {
         addTemplateHeaderRow(k, v);
       });
     }
-    
+
     // 加载自定义参数
     if (template.customParams) {
       Object.entries(template.customParams).forEach(([k, v]) => {
@@ -2246,7 +2256,7 @@ function showTemplateForm(template = null) {
     title.textContent = "新增模板";
     clearTemplateForm();
   }
-  
+
   formSection.style.display = "block";
   formSection.scrollIntoView({ behavior: "smooth" });
 }
@@ -2267,7 +2277,7 @@ function clearTemplateForm() {
   document.getElementById("templateResponsePath").value = "";
   document.getElementById("templateUseMultipart").checked = false;
   document.getElementById("templateImageFieldName").value = "image";
-  
+
   // 清空参数和头部
   const containerParams = document.getElementById("templateParamsList");
   const containerHeaders = document.getElementById("templateHeadersList");
@@ -2282,12 +2292,12 @@ function saveTemplate() {
   const responsePath = document.getElementById("templateResponsePath").value.trim();
   const useMultipart = document.getElementById("templateUseMultipart").checked;
   const imageFieldName = document.getElementById("templateImageFieldName").value.trim() || "image";
-  
+
   if (!name || !endpoint) {
     showStatus("请输入模板名称和端点", "error");
     return;
   }
-  
+
   // 收集自定义请求头
   const customHeaders = {};
   document.querySelectorAll("#templateHeadersList .header-row").forEach((row) => {
@@ -2328,10 +2338,10 @@ function saveTemplate() {
       }
     }
   });
-  
+
   const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
   let templates = settings.providerTemplates || [];
-  
+
   const templateData = {
     name,
     serviceType,
@@ -2342,7 +2352,7 @@ function saveTemplate() {
     customParams,
     customHeaders
   };
-  
+
   if (editingTemplateId) {
     // 编辑现有模板
     templates = templates.map(t => t.id === editingTemplateId ? { ...t, ...templateData } : t);
@@ -2351,10 +2361,10 @@ function saveTemplate() {
     templateData.id = "template-" + Date.now();
     templates.push(templateData);
   }
-  
+
   settings.providerTemplates = templates;
   localStorage.setItem('ai-drawer-settings', JSON.stringify(settings));
-  
+
   showStatus("模板保存成功", "success");
   hideTemplateForm();
   loadTemplatesList();
@@ -2364,11 +2374,11 @@ function saveTemplate() {
 function deleteTemplate(templateId) {
   const settings = JSON.parse(localStorage.getItem('ai-drawer-settings') || '{}');
   let templates = settings.providerTemplates || [];
-  
+
   templates = templates.filter(t => t.id !== templateId);
   settings.providerTemplates = templates;
   localStorage.setItem('ai-drawer-settings', JSON.stringify(settings));
-  
+
   showStatus("模板删除成功", "success");
   loadTemplatesList();
   loadTemplateOptions(); // 更新主表单的模板选项
@@ -2380,7 +2390,7 @@ document.addEventListener('click', (e) => {
   if (e.target === templateModal) {
     hideTemplateModal();
   }
-  
+
   // 关闭按钮
   if (e.target.classList.contains('close-btn') && e.target.closest('#templateModal')) {
     hideTemplateModal();
@@ -2402,7 +2412,7 @@ function addTemplateParameterRow(key = "", value = "", type = "string", fieldTyp
 
   keyInput.value = key;
   typeSelect.value = type;
-  
+
   // 对于random类型，显示空值和禁用状态
   if (type === "random") {
     valueInput.value = "";
@@ -2412,7 +2422,7 @@ function addTemplateParameterRow(key = "", value = "", type = "string", fieldTyp
   } else {
     valueInput.value = typeof value === "object" ? JSON.stringify(value) : String(value === "__RANDOM__" ? "" : value);
   }
-  
+
   if (fieldTypeSelect) fieldTypeSelect.value = fieldType;
 
   // 添加类型变化监听器
