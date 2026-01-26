@@ -33,7 +33,6 @@
         "<all_urls>"
       ],
       "js": [
-        "lib/common.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -46,6 +45,12 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/common.js", "lib/image-utils.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "commands": {
     "draw-image": {
       "suggested_key": {

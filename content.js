@@ -1,4 +1,14 @@
 // 监听来自后台的消息
+// 动态导入公共模块
+let formatErrorMessage, fileToBase64, blobToBase64;
+
+(async () => {
+  const common = await import(chrome.runtime.getURL('lib/common.js'));
+  formatErrorMessage = common.formatErrorMessage;
+  fileToBase64 = common.fileToBase64;
+  blobToBase64 = common.blobToBase64;
+})();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getSelection") {
     const selection = window.getSelection().toString().trim();

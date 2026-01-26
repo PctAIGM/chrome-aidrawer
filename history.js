@@ -1,4 +1,20 @@
 // AI画图助手 - 历史记录页面脚本
+import { 
+  formatErrorMessage, 
+  showNotification, 
+  escapeHtml, 
+  truncateText, 
+  formatDate 
+} from './lib/common.js';
+import {
+  copyImageToClipboard,
+  downloadImage,
+  fetchImageBlob,
+  handleImageError,
+  retryLoadImage,
+  setupImageErrorHandling,
+  createImageErrorObserver
+} from './lib/image-utils.js';
 
 let historyData = [];
 let filteredData = [];
@@ -54,24 +70,8 @@ function debugCheckImageStatus() {
 
 // 设置图片错误监听器，用于检测动态添加的图片
 function setupImageErrorObserver() {
-  // 创建一个观察器实例并传入回调函数
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      // 检查新添加的节点
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          // 检查节点本身是否是图片
-          if (node.tagName === 'IMG') {
-            setupImageErrorHandling(node);
-          }
-          // 检查节点内部的图片
-          const images = node.querySelectorAll ? node.querySelectorAll('img') : [];
-          images.forEach(img => setupImageErrorHandling(img));
-        }
-      });
-    });
-  });
-
+  const observer = createImageErrorObserver();
+  
   // 开始观察
   observer.observe(document.body, {
     childList: true,
@@ -79,30 +79,9 @@ function setupImageErrorObserver() {
   });
 }
 
-// 为单个图片设置错误处理
-function setupImageErrorHandling(img) {
-  if (img.dataset.errorHandlerSetup) return; // 避免重复设置
-  
-  img.dataset.errorHandlerSetup = 'true';
-  
-  img.addEventListener('error', function () {
-    console.log('MutationObserver检测到图片错误:', this.src, this.dataset.errorType);
-    handleImageError(this, this.dataset.errorType);
-  });
-  
-  // 立即检查是否已经加载失败
-  if (img.complete && img.naturalWidth === 0) {
-    console.log('MutationObserver检测到已失败的图片:', img.src, img.dataset.errorType);
-    handleImageError(img, img.dataset.errorType);
-  }
-}
 
 
 
-let historyData = [];
-let filteredData = [];
-let selectedItems = new Set();
-let localNSFWSetting = null; // 本地NSFW设置，null表示使用全局设置
 
 async function loadHistory() {
   const loading = document.querySelector(".loading");
@@ -280,7 +259,7 @@ function createHistoryCard(item, allowNSFW) {
   });
   card.querySelector(".download-btn").addEventListener("click", (e) => {
     e.stopPropagation();
-    downloadImage(item);
+    downloadImageItem(item);
   });
   card.querySelector(".upload-btn").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -294,21 +273,7 @@ function createHistoryCard(item, allowNSFW) {
   // 为图片添加错误处理事件监听器
   const images = card.querySelectorAll('img');
   images.forEach(img => {
-    // 添加基本的错误检测
-    img.addEventListener('error', function () {
-      console.log('图片错误事件触发:', this.src, this.dataset.errorType);
-      handleImageError(this, this.dataset.errorType);
-    });
-    
-    img.addEventListener('load', function () {
-      console.log('图片加载成功:', this.src);
-    });
-    
-    // 检查图片是否已经加载失败（对于已经在缓存中的404图片）
-    if (img.complete && img.naturalWidth === 0) {
-      console.log('检测到图片已经加载失败:', img.src, img.dataset.errorType);
-      handleImageError(img, img.dataset.errorType);
-    }
+    setupImageErrorHandling(img, img.dataset.errorType);
   });
 
   // 为重试按钮添加事件监听器
@@ -394,7 +359,7 @@ async function exportSelectedImages() {
 
       try {
         // 下载图片并转为 blob
-        const blob = await fetchBlobWithFallback(item.imageUrl);
+        const blob = await fetchImageBlob(item.imageUrl);
 
         // 生成文件名
         const timestamp = new Date(item.createdAt).getTime();
@@ -409,7 +374,7 @@ async function exportSelectedImages() {
         // 如果是改图操作，也导出原图
         if (item.operationType === "edit" && item.originalImageUrl) {
           try {
-            const originalBlob = await fetchBlobWithFallback(
+            const originalBlob = await fetchImageBlob(
               item.originalImageUrl,
             );
             imgFolder.file(
@@ -560,7 +525,7 @@ function openModal(item) {
   if (copyBtn) copyBtn.onclick = () => copyImage(item);
 
   const downloadBtn = document.getElementById("modalDownloadBtn");
-  if (downloadBtn) downloadBtn.onclick = () => downloadImage(item);
+  if (downloadBtn) downloadBtn.onclick = () => downloadImageItem(item);
 
   const uploadBtn = document.getElementById("modalUploadBtn");
   if (uploadBtn) uploadBtn.onclick = () => uploadImageToAlbum(item);
@@ -573,40 +538,7 @@ function closeModal() {
 
 async function copyImage(item) {
   try {
-    // 如果是base64 URL，直接使用
-    if (item.imageUrl.startsWith('data:')) {
-      const response = await fetch(item.imageUrl);
-      const blob = await response.blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      showNotification("图片已复制到剪贴板", "success");
-      return;
-    }
-
-    // 对于普通URL，使用 canvas 方式复制图片，解决 blob URL 和跨域问题
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-      img.src = item.imageUrl;
-    });
-
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-
-    // 尝试转换为 blob 并复制
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((b) => {
-        if (b) resolve(b);
-        else reject(new Error("Canvas toBlob failed"));
-      }, "image/png");
-    });
-
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    await copyImageToClipboard(item.imageUrl);
     showNotification("图片已复制到剪贴板", "success");
   } catch (error) {
     console.error("复制失败:", error);
@@ -630,13 +562,8 @@ async function copyPrompt(prompt) {
   }
 }
 
-function downloadImage(item) {
-  const link = document.createElement("a");
-  link.href = item.imageUrl;
-  link.download = `ai-generated-${item.id}.png`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function downloadImageItem(item) {
+  downloadImage(item.imageUrl, `ai-generated-${item.id}.png`);
 }
 
 async function deleteItem(id) {
@@ -751,119 +678,7 @@ function setupEventListeners() {
   }
 }
 
-async function fetchBlobWithFallback(url) {
-  // 如果是base64 URL，直接转换为blob
-  if (url.startsWith('data:')) {
-    try {
-      // 对于base64 URL，使用更可靠的转换方法
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Base64 fetch failed: ${response.status}`);
-      }
-      return await response.blob();
-    } catch (error) {
-      console.warn("Base64 URL fetch失败，尝试手动转换:", error);
-
-      // 手动转换base64为blob的备用方法
-      try {
-        const [header, base64Data] = url.split(',');
-        const mimeMatch = header.match(/data:([^;]+)/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-
-        const byteCharacters = atob(base64Data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        return new Blob([byteArray], { type: mimeType });
-      } catch (manualError) {
-        console.error("手动转换base64也失败:", manualError);
-        throw error;
-      }
-    }
-  }
-
-  // 对于普通HTTP URL，使用原有逻辑
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Fetch failed");
-    return await response.blob();
-  } catch (error) {
-    console.warn("直接下载失败, 尝试后台代理下载:", error);
-    // Fallback to background fetch
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: "fetchBlobBase64",
-        url: url,
-      });
-      if (response && response.success && response.base64) {
-        const res = await fetch(response.base64);
-        return await res.blob();
-      }
-      throw new Error(response?.error || "后台下载失败");
-    } catch (bgError) {
-      throw error; // Throw original error or new one? Original might be more useful if background also failed.
-    }
-  }
-}
-
-// 图片加载错误处理
-function handleImageError(img, type) {
-  console.log(`图片加载失败 (${type}):`, img.src);
-  
-  // 隐藏图片，显示错误提示
-  img.style.display = 'none';
-
-  // 找到对应的错误提示元素
-  const container = img.closest('.image-container') || img.closest('.card-image') || img.closest('div');
-  const errorDiv = container ? container.querySelector('.image-error, .modal-image-error') : null;
-
-  if (errorDiv) {
-    errorDiv.style.display = 'flex';
-    errorDiv.style.flexDirection = 'column';
-    errorDiv.style.alignItems = 'center';
-    errorDiv.style.justifyContent = 'center';
-
-    // 对于双图模式中的错误提示，确保样式正确
-    const isDualImage = container.closest('.dual-image');
-    if (isDualImage && errorDiv.classList.contains('image-error')) {
-      // 双图模式下的特殊处理
-      errorDiv.style.position = 'absolute';
-      errorDiv.style.top = '0';
-      errorDiv.style.left = '0';
-      errorDiv.style.right = '0';
-      errorDiv.style.bottom = '0';
-      errorDiv.style.height = 'auto';
-      errorDiv.style.minHeight = '120px';
-      errorDiv.style.margin = '0';
-      errorDiv.style.zIndex = '10';
-      
-      // 隐藏图片标签，避免遮挡按钮
-      const imageLabel = container.querySelector('.image-label');
-      if (imageLabel) {
-        imageLabel.style.display = 'none';
-      }
-    } else if (errorDiv.classList.contains('image-error')) {
-      // 单图模式下的处理
-      errorDiv.style.height = '150px';
-      errorDiv.style.backgroundColor = '#f8f9fa';
-      errorDiv.style.border = '2px dashed #dee2e6';
-      errorDiv.style.borderRadius = '8px';
-      errorDiv.style.color = '#6c757d';
-      errorDiv.style.fontSize = '12px';
-      errorDiv.style.textAlign = 'center';
-    }
-
-    // 存储原始URL以便重试
-    errorDiv.dataset.originalSrc = img.src;
-    errorDiv.dataset.originalAlt = img.alt;
-    
-    console.log('显示错误提示');
-  } else {
-    console.error('未找到错误提示元素');
-  }
-}
+// fetchBlobWithFallback, handleImageError, retryLoadImage 已移至 lib/image-utils.js
 
 // 检查上传服务并显示上传按钮
 async function checkUploadServiceAndShowButtons() {
@@ -920,61 +735,7 @@ async function uploadImageToAlbum(item) {
   }
 }
 
-// 重试加载图片
-function retryLoadImage(button) {
-  const errorDiv = button.closest('.image-error, .modal-image-error');
-  const container = errorDiv.closest('.image-container') || errorDiv.closest('.card-image') || errorDiv.closest('div');
-  const img = container.querySelector('img');
 
-  if (errorDiv && img) {
-    const originalSrc = errorDiv.dataset.originalSrc;
-    const originalAlt = errorDiv.dataset.originalAlt;
-
-    // 显示加载状态
-    button.textContent = '加载中...';
-    button.disabled = true;
-
-    // 重新设置图片源
-    img.onload = () => {
-      // 加载成功，隐藏错误提示，显示图片
-      errorDiv.style.display = 'none';
-      img.style.display = 'block';
-      button.textContent = '重试';
-      button.disabled = false;
-      
-      // 如果是双图模式，恢复图片标签的显示
-      const isDualImage = container.closest('.dual-image');
-      if (isDualImage) {
-        const imageLabel = container.querySelector('.image-label');
-        if (imageLabel) {
-          imageLabel.style.display = 'block';
-        }
-      }
-    };
-
-    img.onerror = () => {
-      // 加载仍然失败
-      button.textContent = '重试';
-      button.disabled = false;
-
-      // 可以考虑显示更详细的错误信息
-      const errorText = errorDiv.querySelector('.error-text');
-      if (errorText) {
-        errorText.textContent = '图片链接已失效';
-      } else {
-        // 对于模态框中的错误
-        const errorTextEl = errorDiv.querySelector('div div:nth-child(2)');
-        if (errorTextEl) {
-          errorTextEl.textContent = '图片链接已彻底失效';
-        }
-      }
-    };
-
-    // 添加时间戳避免缓存
-    const separator = originalSrc.includes('?') ? '&' : '?';
-    img.src = originalSrc + separator + 't=' + Date.now();
-  }
-}
 
 // 初始化NSFW设置
 async function initializeNSFWSetting() {

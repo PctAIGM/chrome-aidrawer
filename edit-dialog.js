@@ -1,4 +1,5 @@
 // 编辑图片对话框脚本
+import { fileToBase64 } from './lib/common.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 获取图片URL

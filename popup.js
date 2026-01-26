@@ -1,4 +1,6 @@
 // AI画图助手 - 弹窗脚本
+import { formatErrorMessage, fileToBase64, showNotification } from './lib/common.js';
+import { copyImageToClipboard, downloadImage } from './lib/image-utils.js';
 
 document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
@@ -129,7 +131,7 @@ function setupEventListeners() {
   document.getElementById("copyBtn").addEventListener("click", copyImage);
   document
     .getElementById("downloadBtn")
-    .addEventListener("click", downloadImage);
+    .addEventListener("click", downloadImageWrapper);
   document.getElementById("newBtn").addEventListener("click", resetToInput);
   document.getElementById("retryBtn").addEventListener("click", resetToInput);
 
@@ -467,9 +469,7 @@ function hideUploadStatus() {
 
 async function copyImage() {
   try {
-    const response = await fetch(currentImageUrl);
-    const blob = await response.blob();
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    await copyImageToClipboard(currentImageUrl);
     showNotification("图片已复制到剪贴板");
   } catch (error) {
     console.error("复制失败:", error);
@@ -477,13 +477,8 @@ async function copyImage() {
   }
 }
 
-function downloadImage() {
-  const link = document.createElement("a");
-  link.href = currentImageUrl;
-  link.download = `ai-generated-${Date.now()}.png`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function downloadImageWrapper() {
+  downloadImage(currentImageUrl, `ai-generated-${Date.now()}.png`);
 }
 
 function setLoading(loading) {
