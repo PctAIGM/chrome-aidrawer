@@ -256,11 +256,57 @@ header h1 {
   border-radius: 6px;
   overflow: hidden;
   background: #f5f5f5;
+  position: relative;
 }
 
 .result-image img {
   width: 100%;
   display: block;
+}
+
+/* NSFW 模糊样式 */
+.result-image.nsfw-blur img {
+  filter: blur(30px);
+  transition: filter 0.3s;
+}
+
+.result-image .nsfw-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: background 0.3s;
+  z-index: 10;
+}
+
+.result-image .nsfw-overlay:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.result-image .nsfw-overlay .nsfw-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.result-image .nsfw-overlay span:last-child {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.result-image.nsfw-reveal img {
+  filter: none;
+}
+
+.result-image.nsfw-reveal .nsfw-overlay {
+  display: none;
 }
 
 .result-actions {
