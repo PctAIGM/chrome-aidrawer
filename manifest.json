@@ -33,6 +33,7 @@
         "<all_urls>"
       ],
       "js": [
+        "lib/common.js",
         "content.js"
       ],
       "run_at": "document_idle"

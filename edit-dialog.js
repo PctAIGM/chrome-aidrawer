@@ -240,13 +240,3 @@ ${JSON.stringify(debugData.response, null, 2)}
         }
     }
 }
-
-// 将文件转换为base64
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-}

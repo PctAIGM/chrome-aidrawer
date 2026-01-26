@@ -1,5 +1,10 @@
 // AI画图助手 - 历史记录页面脚本
 
+let historyData = [];
+let filteredData = [];
+let selectedItems = new Set();
+let localNSFWSetting = null; // 本地NSFW设置，null表示使用全局设置
+
 document.addEventListener("DOMContentLoaded", () => {
   loadHistory();
   setupEventListeners();
@@ -746,44 +751,6 @@ function setupEventListeners() {
   }
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function truncateText(text, maxLength) {
-  if (!text) return "";
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + "...";
-}
-
-function formatDate(dateString) {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = now - date;
-
-  if (diff < 60000) return "刚刚";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
-
-  return date.toLocaleDateString("zh-CN");
-}
-
-function showNotification(message, type = "info") {
-  const existing = document.querySelector(".notification");
-  if (existing) existing.remove();
-
-  const notification = document.createElement("div");
-  notification.className = `notification ${type}`;
-  notification.textContent = message;
-  document.body.appendChild(notification);
-
-  setTimeout(() => notification.remove(), 3000);
-}
-
 async function fetchBlobWithFallback(url) {
   // 如果是base64 URL，直接转换为blob
   if (url.startsWith('data:')) {
@@ -840,6 +807,7 @@ async function fetchBlobWithFallback(url) {
     }
   }
 }
+
 // 图片加载错误处理
 function handleImageError(img, type) {
   console.log(`图片加载失败 (${type}):`, img.src);
@@ -918,37 +886,6 @@ async function checkUploadServiceAndShowButtons() {
   } catch (error) {
     console.error("检查上传服务失败:", error);
   }
-}
-
-// 格式化错误信息，处理对象类型的错误
-function formatErrorMessage(error) {
-  if (!error) return '未知错误';
-  
-  // 如果是字符串，直接返回
-  if (typeof error === 'string') return error;
-  
-  // 如果是Error对象，返回message
-  if (error instanceof Error) return error.message;
-  
-  // 如果是对象，尝试转换为JSON
-  if (typeof error === 'object') {
-    try {
-      // 如果对象有message属性，优先使用
-      if (error.message) return error.message;
-      
-      // 如果对象有error属性，递归处理
-      if (error.error) return formatErrorMessage(error.error);
-      
-      // 尝试JSON序列化
-      const jsonStr = JSON.stringify(error, null, 2);
-      return jsonStr !== '{}' ? jsonStr : '未知对象错误';
-    } catch (e) {
-      return `对象错误 (无法序列化): ${error.toString()}`;
-    }
-  }
-  
-  // 其他类型，转换为字符串
-  return String(error);
 }
 
 // 上传图片到相册
