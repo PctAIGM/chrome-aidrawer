@@ -2,192 +2,192 @@
 import { fileToBase64 } from './lib/common.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // 获取图片URL
-    const response = await chrome.runtime.sendMessage({ action: 'getContextImage' });
-    const imageUrl = response?.imageUrl;
+  // 获取图片URL
+  const response = await chrome.runtime.sendMessage({ action: 'getContextImage' });
+  const imageUrl = response?.imageUrl;
 
-    // 获取待处理的provider ID
-    const { pendingEditProvider } = await chrome.storage.local.get('pendingEditProvider');
+  // 获取待处理的provider ID
+  const { pendingEditProvider } = await chrome.storage.local.get('pendingEditProvider');
 
-    // 检查是否配置了图片上传服务
-    const settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
-    const uploadServices = settings?.imageUploadServices || [];
-    const hasUploadService = uploadServices.some(service => service.isActive);
+  // 检查是否配置了图片上传服务
+  const settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
+  const uploadServices = settings?.imageUploadServices || [];
+  const hasUploadService = uploadServices.some(service => service.isActive);
 
-    if (imageUrl) {
-        const preview = document.getElementById('imagePreview');
-        preview.src = imageUrl;
-        preview.style.display = 'block';
-    } else if (hasUploadService) {
-        // 没有右键图片但有上传服务，显示文件选择
-        const imageSelectSection = document.getElementById('imageSelectSection');
-        if (imageSelectSection) {
-            imageSelectSection.style.display = 'block';
-        }
+  if (imageUrl) {
+    const preview = document.getElementById('imagePreview');
+    preview.src = imageUrl;
+    preview.style.display = 'block';
+  } else if (hasUploadService) {
+    // 没有右键图片但有上传服务，显示文件选择
+    const imageSelectSection = document.getElementById('imageSelectSection');
+    if (imageSelectSection) {
+      imageSelectSection.style.display = 'block';
     }
+  }
 
-    setupEventListeners(imageUrl, pendingEditProvider, hasUploadService);
+  setupEventListeners(imageUrl, pendingEditProvider, hasUploadService);
 });
 
 function setupEventListeners(imageUrl, providerId, hasUploadService) {
-    const promptInput = document.getElementById('promptInput');
-    const submitBtn = document.getElementById('submitBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-    const debugBtn = document.getElementById('debugBtn');
-    const errorMessage = document.getElementById('errorMessage');
-    const imageFileInput = document.getElementById('imageFileInput');
-    const uploadImageBtn = document.getElementById('uploadImageBtn');
-    const uploadStatus = document.getElementById('uploadStatus');
+  const promptInput = document.getElementById('promptInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const debugBtn = document.getElementById('debugBtn');
+  const errorMessage = document.getElementById('errorMessage');
+  const imageFileInput = document.getElementById('imageFileInput');
+  const uploadImageBtn = document.getElementById('uploadImageBtn');
+  const uploadStatus = document.getElementById('uploadStatus');
 
-    // 监听来自background的消息
-    let messageHandler = null;
-    let debugData = null;  // 存储调试数据
-    let currentImageUrl = imageUrl; // 当前使用的图片URL
+  // 监听来自background的消息
+  let messageHandler = null;
+  let debugData = null;  // 存储调试数据
+  let currentImageUrl = imageUrl; // 当前使用的图片URL
 
-    // 图片上传功能
-    if (hasUploadService && uploadImageBtn) {
-        uploadImageBtn.addEventListener('click', async () => {
-            const file = imageFileInput.files[0];
-            if (!file) {
-                showUploadStatus('请先选择图片文件', 'error');
-                return;
-            }
+  // 图片上传功能
+  if (hasUploadService && uploadImageBtn) {
+    uploadImageBtn.addEventListener('click', async () => {
+      const file = imageFileInput.files[0];
+      if (!file) {
+        showUploadStatus('请先选择图片文件', 'error');
+        return;
+      }
 
-            if (!file.type.startsWith('image/')) {
-                showUploadStatus('请选择图片文件', 'error');
-                return;
-            }
+      if (!file.type.startsWith('image/')) {
+        showUploadStatus('请选择图片文件', 'error');
+        return;
+      }
 
-            uploadImageBtn.disabled = true;
-            uploadImageBtn.textContent = '上传中...';
-            hideUploadStatus();
+      uploadImageBtn.disabled = true;
+      uploadImageBtn.textContent = '上传中...';
+      hideUploadStatus();
 
-            try {
-                // 将文件转换为base64
-                const base64 = await fileToBase64(file);
-                
-                const result = await chrome.runtime.sendMessage({
-                    action: 'uploadImage',
-                    imageData: base64,
-                    fileName: file.name
-                });
-
-                if (result.success) {
-                    currentImageUrl = result.imageUrl;
-                    
-                    // 更新预览
-                    const preview = document.getElementById('imagePreview');
-                    preview.src = currentImageUrl;
-                    preview.style.display = 'block';
-                    
-                    // 隐藏文件选择区域
-                    const imageSelectSection = document.getElementById('imageSelectSection');
-                    if (imageSelectSection) {
-                        imageSelectSection.style.display = 'none';
-                    }
-                    
-                    showUploadStatus('图片上传成功！', 'success');
-                } else {
-                    throw new Error(result.error || '上传失败');
-                }
-            } catch (error) {
-                console.error('图片上传失败:', error);
-                showUploadStatus('上传失败: ' + error.message, 'error');
-            } finally {
-                uploadImageBtn.disabled = false;
-                uploadImageBtn.textContent = '上传图片';
-            }
+      try {
+        // 将文件转换为base64
+        const base64 = await fileToBase64(file);
+        
+        const result = await chrome.runtime.sendMessage({
+          action: 'uploadImage',
+          imageData: base64,
+          fileName: file.name
         });
+
+        if (result.success) {
+          currentImageUrl = result.imageUrl;
+          
+          // 更新预览
+          const preview = document.getElementById('imagePreview');
+          preview.src = currentImageUrl;
+          preview.style.display = 'block';
+          
+          // 隐藏文件选择区域
+          const imageSelectSection = document.getElementById('imageSelectSection');
+          if (imageSelectSection) {
+            imageSelectSection.style.display = 'none';
+          }
+          
+          showUploadStatus('图片上传成功！', 'success');
+        } else {
+          throw new Error(result.error || '上传失败');
+        }
+      } catch (error) {
+        console.error('图片上传失败:', error);
+        showUploadStatus('上传失败: ' + error.message, 'error');
+      } finally {
+        uploadImageBtn.disabled = false;
+        uploadImageBtn.textContent = '上传图片';
+      }
+    });
+  }
+
+  // 提交按钮
+  submitBtn.addEventListener('click', async () => {
+    const prompt = promptInput.value.trim();
+
+    // 隐藏之前的错误和调试按钮
+    errorMessage.style.display = 'none';
+    debugBtn.style.display = 'none';
+    debugData = null;
+
+    if (!prompt) {
+      showError('请输入改图提示词');
+      return;
     }
 
-    // 提交按钮
-    submitBtn.addEventListener('click', async () => {
-        const prompt = promptInput.value.trim();
+    if (!currentImageUrl || !providerId) {
+      showError('图片信息丢失，请重新选择图片或右键点击图片');
+      return;
+    }
 
-        // 隐藏之前的错误和调试按钮
-        errorMessage.style.display = 'none';
-        debugBtn.style.display = 'none';
-        debugData = null;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '处理中...';
 
-        if (!prompt) {
-            showError('请输入改图提示词');
-            return;
+    // 设置超时定时器
+    const timeout = setTimeout(() => {
+      showError('改图请求超时，请检查网络连接或服务商配置');
+      submitBtn.disabled = false;
+      submitBtn.textContent = '开始改图';
+    }, 60000); // 60秒超时
+
+    // 监听改图结果
+    messageHandler = (request) => {
+      if (request.action === 'imageGenerated') {
+        clearTimeout(timeout);
+        // 保存调试数据
+        if (request.debugData) {
+          debugData = request.debugData;
         }
-
-        if (!currentImageUrl || !providerId) {
-            showError('图片信息丢失，请重新选择图片或右键点击图片');
-            return;
+        // 成功，延迟一点再关闭让用户看到
+        submitBtn.textContent = '改图成功！';
+        setTimeout(() => {
+          chrome.storage.local.remove('pendingEditProvider');
+          window.close();
+        }, 500);
+      } else if (request.action === 'imageError') {
+        clearTimeout(timeout);
+        // 保存调试数据
+        if (request.debugData) {
+          debugData = request.debugData;
+          debugBtn.style.display = 'inline-block';
         }
+        showError(request.error || '改图失败');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '开始改图';
+      }
+    };
 
-        submitBtn.disabled = true;
-        submitBtn.textContent = '处理中...';
+    chrome.runtime.onMessage.addListener(messageHandler);
 
-        // 设置超时定时器
-        const timeout = setTimeout(() => {
-            showError('改图请求超时，请检查网络连接或服务商配置');
-            submitBtn.disabled = false;
-            submitBtn.textContent = '开始改图';
-        }, 60000); // 60秒超时
+    try {
+      // 发送改图请求
+      await chrome.runtime.sendMessage({
+        action: 'editImage',
+        prompt: prompt,
+        imageUrl: currentImageUrl,
+        providerId: providerId
+      });
+    } catch (error) {
+      clearTimeout(timeout);
+      console.error('发送改图请求失败:', error);
+      showError('发送请求失败: ' + error.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = '开始改图';
+      if (messageHandler) {
+        chrome.runtime.onMessage.removeListener(messageHandler);
+      }
+    }
+  });
 
-        // 监听改图结果
-        messageHandler = (request) => {
-            if (request.action === 'imageGenerated') {
-                clearTimeout(timeout);
-                // 保存调试数据
-                if (request.debugData) {
-                    debugData = request.debugData;
-                }
-                // 成功，延迟一点再关闭让用户看到
-                submitBtn.textContent = '改图成功！';
-                setTimeout(() => {
-                    chrome.storage.local.remove('pendingEditProvider');
-                    window.close();
-                }, 500);
-            } else if (request.action === 'imageError') {
-                clearTimeout(timeout);
-                // 保存调试数据
-                if (request.debugData) {
-                    debugData = request.debugData;
-                    debugBtn.style.display = 'inline-block';
-                }
-                showError(request.error || '改图失败');
-                submitBtn.disabled = false;
-                submitBtn.textContent = '开始改图';
-            }
-        };
+  // 调试按钮
+  debugBtn.addEventListener('click', () => {
+    if (debugData) {
+      console.log('=== 改图调试信息 ===');
+      console.log('服务商:', debugData.providerName);
+      console.log('请求体:', debugData.request);
+      console.log('响应数据:', debugData.response);
 
-        chrome.runtime.onMessage.addListener(messageHandler);
-
-        try {
-            // 发送改图请求
-            await chrome.runtime.sendMessage({
-                action: 'editImage',
-                prompt: prompt,
-                imageUrl: currentImageUrl,
-                providerId: providerId
-            });
-        } catch (error) {
-            clearTimeout(timeout);
-            console.error('发送改图请求失败:', error);
-            showError('发送请求失败: ' + error.message);
-            submitBtn.disabled = false;
-            submitBtn.textContent = '开始改图';
-            if (messageHandler) {
-                chrome.runtime.onMessage.removeListener(messageHandler);
-            }
-        }
-    });
-
-    // 调试按钮
-    debugBtn.addEventListener('click', () => {
-        if (debugData) {
-            console.log('=== 改图调试信息 ===');
-            console.log('服务商:', debugData.providerName);
-            console.log('请求体:', debugData.request);
-            console.log('响应数据:', debugData.response);
-
-            // 显示调试信息弹窗
-            const debugInfo = `
+      // 显示调试信息弹窗
+      const debugInfo = `
 调试信息
 -----------------
 服务商: ${debugData.providerName || '未知'}
@@ -199,45 +199,45 @@ ${JSON.stringify(debugData.request, null, 2)}
 ${JSON.stringify(debugData.response, null, 2)}
       `.trim();
 
-            alert(debugInfo);
-        }
-    });
-
-    // 取消按钮
-    cancelBtn.addEventListener('click', async () => {
-        if (messageHandler) {
-            chrome.runtime.onMessage.removeListener(messageHandler);
-        }
-        await chrome.storage.local.remove('pendingEditProvider');
-        window.close();
-    });
-
-    // 回车提交
-    promptInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-            submitBtn.click();
-        }
-    });
-
-    // 显示错误信息
-    function showError(message) {
-        errorMessage.textContent = message;
-        errorMessage.style.display = 'block';
+      alert(debugInfo);
     }
+  });
 
-    // 显示上传状态
-    function showUploadStatus(message, type = 'info') {
-        if (uploadStatus) {
-            uploadStatus.textContent = message;
-            uploadStatus.className = type === 'error' ? 'error-message' : 'success-message';
-            uploadStatus.style.display = 'block';
-        }
+  // 取消按钮
+  cancelBtn.addEventListener('click', async () => {
+    if (messageHandler) {
+      chrome.runtime.onMessage.removeListener(messageHandler);
     }
+    await chrome.storage.local.remove('pendingEditProvider');
+    window.close();
+  });
 
-    // 隐藏上传状态
-    function hideUploadStatus() {
-        if (uploadStatus) {
-            uploadStatus.style.display = 'none';
-        }
+  // 回车提交
+  promptInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      submitBtn.click();
     }
+  });
+
+  // 显示错误信息
+  function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+  }
+
+  // 显示上传状态
+  function showUploadStatus(message, type = 'info') {
+    if (uploadStatus) {
+      uploadStatus.textContent = message;
+      uploadStatus.className = type === 'error' ? 'error-message' : 'success-message';
+      uploadStatus.style.display = 'block';
+    }
+  }
+
+  // 隐藏上传状态
+  function hideUploadStatus() {
+    if (uploadStatus) {
+      uploadStatus.style.display = 'none';
+    }
+  }
 }
