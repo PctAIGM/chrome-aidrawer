@@ -1,11 +1,5 @@
 /* AI画图助手 - 配置页面样式 (macOS 风格) */
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
 /* macOS 风格变量 */
 :root {
     --bg-primary: #f5f5f7;
@@ -32,22 +26,14 @@
     --transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
-/* Global */
+/* 配置页面特定样式覆盖 */
 body {
     background: var(--bg-primary);
-    font-family:
-        -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-        "Helvetica Neue", Arial, sans-serif;
-    color: var(--text-primary);
-    font-size: 14px;
-    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
     padding: 20px 24px 100px;
 }
 
@@ -364,72 +350,9 @@ label {
     letter-spacing: -0.1px;
 }
 
-/* Input - macOS 风格 */
-input[type="text"],
-input[type="password"],
-input[type="number"] {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1px solid var(--border-color-strong);
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    transition: var(--transition);
-    outline: none;
-}
+/* 配置页面特定输入框样式覆盖 */
 
-input[type="text"]:hover,
-input[type="password"]:hover,
-input[type="number"]:hover {
-    border-color: var(--text-tertiary);
-}
-
-input[type="text"]:focus,
-input[type="password"]:focus,
-input[type="number"]:focus {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
-
-input::placeholder {
-    color: var(--text-tertiary);
-}
-
-input:disabled {
-    background: var(--bg-tertiary);
-    color: var(--text-tertiary);
-    cursor: not-allowed;
-}
-
-/* Select - macOS 风格 */
-select {
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    padding: 10px 36px 10px 14px;
-    border: 1px solid var(--border-color-strong);
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    background-color: var(--bg-secondary);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2386868b' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 10px 6px;
-    cursor: pointer;
-    transition: var(--transition);
-    color: var(--text-primary);
-    outline: none;
-}
-
-select:hover {
-    border-color: var(--text-tertiary);
-}
-
-select:focus {
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
+/* 配置页面特定下拉框样式覆盖 */
 
 /* 参数类型下拉框 */
 .param-type,
@@ -477,44 +400,7 @@ select:focus {
     user-select: none;
 }
 
-.checkbox-label input[type="checkbox"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    border: 1.5px solid var(--border-color-strong);
-    border-radius: 5px;
-    background: var(--bg-secondary);
-    cursor: pointer;
-    transition: var(--transition);
-    position: relative;
-    flex-shrink: 0;
-}
-
-.checkbox-label input[type="checkbox"]:hover {
-    border-color: var(--text-tertiary);
-}
-
-.checkbox-label input[type="checkbox"]:checked {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-}
-
-.checkbox-label input[type="checkbox"]:checked::after {
-    content: "";
-    position: absolute;
-    left: 5px;
-    top: 2px;
-    width: 5px;
-    height: 9px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-
-.checkbox-label input[type="checkbox"]:focus {
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
+/* 配置页面特定复选框样式覆盖 */
 
 /* Radio - macOS 风格 */
 .radio-group {
@@ -615,90 +501,7 @@ select:focus {
     border: 1px solid var(--border-color);
 }
 
-/* Buttons - macOS 风格 */
-.btn {
-    border: none;
-    border-radius: var(--radius-md);
-    font-weight: 500;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    transition: var(--transition);
-    font-size: 14px;
-    padding: 10px 18px;
-    outline: none;
-}
-
-.btn:active {
-    transform: scale(0.98);
-}
-
-.btn.primary {
-    background: var(--accent-color);
-    color: white;
-}
-
-.btn.primary:hover {
-    background: var(--accent-hover);
-}
-
-.btn.primary:focus {
-    box-shadow: 0 0 0 3px var(--accent-light);
-}
-
-.btn.secondary {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color-strong);
-}
-
-.btn.secondary:hover {
-    background: var(--border-color);
-}
-
-.btn.danger {
-    color: var(--danger-color);
-    background: transparent;
-}
-
-.btn.danger:hover {
-    background: rgba(255, 59, 48, 0.1);
-}
-
-.btn.text-btn {
-    background: transparent;
-    color: var(--accent-color);
-    padding: 8px 12px;
-    font-weight: 500;
-}
-
-.btn.text-btn:hover {
-    background: var(--accent-light);
-}
-
-.btn.round {
-    border-radius: 20px;
-    padding: 8px 16px;
-    font-size: 13px;
-}
-
-.btn.icon-btn {
-    padding: 8px 12px;
-    font-size: 16px;
-}
-
-.btn.big {
-    padding: 12px 24px;
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.btn.small {
-    padding: 6px 12px;
-    font-size: 13px;
-}
+/* 配置页面特定按钮样式覆盖 */
 
 /* Form Actions */
 .form-actions {
@@ -975,22 +778,7 @@ kbd {
     animation: fadeIn 0.3s ease-out;
 }
 
-/* Modal Styles */
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    animation: fadeIn 0.2s ease-out;
-}
+/* 配置页面特定模态框样式覆盖 */
 
 .modal-content {
     background: var(--bg-secondary);
