@@ -523,6 +523,43 @@ header h1 {
     color: #999;
 }
 
+/* 提示词切换样式 - 与生成结果弹窗统一 */
+.modal-prompt-header {
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.prompt-toggle-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: #667eea;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.prompt-toggle-link:hover {
+    opacity: 0.8;
+}
+
+.prompt-toggle-icon {
+    font-size: 14px;
+}
+
+#modalPrompt {
+    font-size: 14px;
+    color: #718096;
+    line-height: 1.5;
+    font-style: italic;
+    background: #f8fafc;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: left;
+    word-break: break-all;
+    margin-bottom: 8px;
+}
+
 .modal-actions {
     display: flex;
     gap: 12px;

@@ -514,7 +514,20 @@ function openModal(item) {
     });
   }
 
-  if (modalPrompt) modalPrompt.textContent = item.prompt;
+  if (modalPrompt) {
+    modalPrompt.textContent = `"${item.prompt}"`;
+    modalPrompt.style.display = "none";
+  }
+
+  // 设置提示词切换
+  const promptToggle = document.getElementById("modalPromptToggle");
+  if (promptToggle) {
+    promptToggle.onclick = () => {
+      const isHidden = modalPrompt.style.display === "none";
+      modalPrompt.style.display = isHidden ? "block" : "none";
+    };
+  }
+
   const opText = isEdit ? "✏️ 改图" : "🎨 生成";
   if (modalMeta)
     modalMeta.textContent = `${item.provider || "未知"} · ${opText} · ${formatDate(item.createdAt)}`;
