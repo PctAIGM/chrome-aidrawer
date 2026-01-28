@@ -7,6 +7,18 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();
 });
 
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "imageGenerated") {
+    currentImageUrl = request.imageUrl;
+    showResult(document.getElementById("promptInput").value.trim());
+    setLoading(false);
+  } else if (request.action === "imageError") {
+    showError(request.error || "生成失败");
+    setLoading(false);
+  }
+});
+
+let allowNSFW = false; // NSFW设置
 let currentImageUrl = null;
 let uploadedImageUrl = null; // 存储上传后的图片URL
 
@@ -272,20 +284,7 @@ async function generateImage() {
   }
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "imageGenerated") {
-    currentImageUrl = request.imageUrl;
-    showResult(document.getElementById("promptInput").value.trim());
-    setLoading(false);
-  } else if (request.action === "imageError") {
-    showError(request.error || "生成失败");
-    setLoading(false);
-  }
-});
-
-let allowNSFW = false; // NSFW设置
-
-function showResult(prompt) {
+async function showResult(prompt) {
   document.getElementById("inputSection").style.display = "none";
   document.getElementById("errorSection").style.display = "none";
   document.getElementById("resultSection").style.display = "block";
@@ -295,6 +294,14 @@ function showResult(prompt) {
 
   document.getElementById("resultPrompt").textContent = prompt;
   
+  // 重新获取NSFW设置，确保是最新的
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    allowNSFW = !!response.allowNSFW;
+  } catch (error) {
+    console.error("获取NSFW设置失败:", error);
+  }
+  
   // 处理NSFW遮罩
   const resultImageContainer = document.querySelector(".result-image");
   const existingOverlay = resultImageContainer.querySelector(".nsfw-overlay");
@@ -302,16 +309,37 @@ function showResult(prompt) {
   if (!allowNSFW) {
     // 添加模糊效果和遮罩
     resultImageContainer.classList.add("nsfw-blur");
+    resultImageContainer.classList.remove("nsfw-reveal");
     
-    if (!existingOverlay) {
-      const overlay = document.createElement("div");
-      overlay.className = "nsfw-overlay";
-      overlay.innerHTML = '<span class="nsfw-icon">🔞</span><span>点击查看</span>';
-      overlay.addEventListener("click", () => {
-        resultImageContainer.classList.add("nsfw-reveal");
-      });
-      resultImageContainer.appendChild(overlay);
+    // 移除现有遮罩（如果存在）
+    if (existingOverlay) {
+      existingOverlay.remove();
     }
+    
+    // 创建新的遮罩
+    const overlay = document.createElement("div");
+    overlay.className = "nsfw-overlay";
+    overlay.innerHTML = '<span class="nsfw-icon">🔞</span><span>点击查看</span>';
+    
+    // 添加点击事件
+    overlay.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resultImageContainer.classList.add("nsfw-reveal");
+    });
+    
+    // 添加鼠标悬停事件
+    overlay.addEventListener("mouseenter", () => {
+      overlay.style.background = "rgba(0, 0, 0, 0.8)";
+    });
+    
+    overlay.addEventListener("mouseleave", () => {
+      overlay.style.background = "rgba(0, 0, 0, 0.7)";
+    });
+    
+    // 添加到容器
+    resultImageContainer.appendChild(overlay);
+    
   } else {
     // 移除模糊效果和遮罩
     resultImageContainer.classList.remove("nsfw-blur", "nsfw-reveal");
