@@ -1,3 +1,7 @@
+
+**[English](README_EN.md)**
+
+---
 # AI画图助手 - Chrome扩展
 
 一个功能强大的Chrome浏览器插件，选中文字后右键菜单即可调用AI生成图片，支持改图功能和多种图片保存方式。
@@ -198,6 +202,4 @@ chrome-aidrawer/
 - ⚙️ 多API支持
 - 📚 历史记录功能
 
----
 
-**English version available at [README_EN.md](README_EN.md)**

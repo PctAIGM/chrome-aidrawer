@@ -1,3 +1,7 @@
+
+**[简体中文](README.md)**
+
+---
 # AI Drawer - Chrome Extension
 
 A powerful Chrome browser extension that generates AI images from selected text via right-click menu, supporting image editing and multiple save options.
