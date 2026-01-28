@@ -43,7 +43,7 @@
 - **加密导出** - 配置支持AES-GCM加密导出，保护API密钥安全
 - **配置导入** - 支持导入加密或明文配置文件
 
-### ?? 调试功能
+### 🐛 调试功能
 - **API调试** - 生成失败时可查看完整的请求/响应数据
 - **错误详情** - 显示详细的错误信息便于排查问题
 
@@ -116,21 +116,25 @@ chrome-aidrawer/
 ├── manifest.json          # 插件配置
 ├── background.js          # 后台脚本（处理API请求、管理历史记录）
 ├── content.js             # 内容脚本（处理页面交互、显示结果）
-├── options.html           # API配置页面
-├── options.js             # 配置逻辑（服务商管理、模板、WebDAV等）
 ├── popup.html             # 弹窗页面
 ├── popup.js               # 弹窗逻辑
-├── edit-dialog.html       # 改图对话框页面
-├── edit-dialog.js         # 改图对话框逻辑
+├── options.html           # API配置页面
+├── options.js             # 配置逻辑（服务商管理、模板、WebDAV等）
 ├── history.html           # 历史记录页面
 ├── history.js             # 历史记录逻辑
+├── edit-dialog.html       # 改图对话框页面
+├── edit-dialog.js         # 改图对话框逻辑
 ├── icons/                 # 插件图标
 ├── styles/                # 样式文件
-│   ├── history.css        # 历史记录样式
+│   ├── common.css         # 公共样式
+│   ├── popup.css          # 弹窗样式
 │   ├── options.css        # 设置页面样式
-│   └── popup.css          # 弹窗样式
-└── lib/                   # 第三方库
-    └── jszip.min.js       # ZIP压缩库
+│   ├── history.css        # 历史记录样式
+│   └── edit-dialog.css    # 改图对话框样式
+└── lib/                   # 共享库
+    ├── common.js          # 公共工具函数（ES6模块）
+    ├── image-utils.js     # 图片处理工具（ES6模块）
+    └── jszip.min.js       # ZIP压缩库（第三方）
 ```
 
 ## 支持的API

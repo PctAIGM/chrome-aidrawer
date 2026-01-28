@@ -73,7 +73,7 @@ A powerful Chrome browser extension that generates AI images from selected text 
 4. Click "Start editing"
 
 **Method 2: Upload local image**
-1. Right-click selected text or page空白处
+1. Right-click selected text or page empty area
 2. Choose "✏️ Edit with [provider name]"
 3. Click "Choose image" in the dialog to upload
 4. Enter your editing prompt
@@ -116,21 +116,25 @@ chrome-aidrawer/
 ├── manifest.json          # Extension manifest
 ├── background.js          # Background script (API requests, history management)
 ├── content.js             # Content script (page interaction, result display)
-├── options.html           # API settings page
-├── options.js             # Settings logic (providers, templates, WebDAV)
 ├── popup.html             # Popup page
 ├── popup.js               # Popup logic
-├── edit-dialog.html       # Edit dialog page
-├── edit-dialog.js         # Edit dialog logic
+├── options.html           # API settings page
+├── options.js             # Settings logic (providers, templates, WebDAV)
 ├── history.html           # History page
 ├── history.js             # History logic
+├── edit-dialog.html       # Edit dialog page
+├── edit-dialog.js         # Edit dialog logic
 ├── icons/                 # Extension icons
 ├── styles/                # Style files
-│   ├── history.css        # History page styles
+│   ├── common.css         # Common styles
+│   ├── popup.css          # Popup styles
 │   ├── options.css        # Options page styles
-│   └── popup.css          # Popup styles
-└── lib/                   # Third-party libraries
-    └── jszip.min.js       # ZIP compression library
+│   ├── history.css        # History page styles
+│   └── edit-dialog.css    # Edit dialog styles
+└── lib/                   # Shared libraries
+    ├── common.js          # Common utilities (ES6 module)
+    ├── image-utils.js     # Image processing utilities (ES6 module)
+    └── jszip.min.js       # ZIP compression library (third-party)
 ```
 
 ## Supported APIs
