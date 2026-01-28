@@ -33,7 +33,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       debugData: message.debugData,
     });
   } else if (message.action === "showEditDialog") {
-    showEditDialog(message.imageUrl, message.providerId, message.providerName);
+    showEditDialog(message.imageUrl, message.providerId, message.providerName, message.warning, message.isAutoUploaded);
+  } else if (message.action === "showEditDialogPreparing") {
+    // 显示准备中状态
+    showEditDialogPreparing(message.providerName);
+  } else if (message.action === "downloadImageAsBase64") {
+    // 下载图片并转为base64
+    downloadImageAsBase64(message.imageUrl)
+      .then(base64 => sendResponse({ success: true, base64 }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // 保持消息通道开启
   } else if (message.action === "showResultModal") {
     // 处理来自background.js的showResultModal请求
     showResultModal(message.imageUrl, message.prompt, message.debugData);
@@ -495,8 +504,91 @@ function showDebugModal(debugData) {
   };
 }
 
+// 显示改图准备中状态
+function showEditDialogPreparing(providerName) {
+  // 移除已有的对话框
+  const existing = document.getElementById("ai-draw-edit-modal");
+  if (existing) existing.remove();
+
+  const container = document.createElement("div");
+  container.id = "ai-draw-edit-modal";
+  container.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 999999;
+    padding: 20px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  `;
+
+  const modal = document.createElement("div");
+  modal.style.cssText = `
+    background: white; padding: 32px; border-radius: 16px;
+    max-width: 400px; width: 100%;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    text-align: center;
+  `;
+
+  modal.innerHTML = `
+    <div style="font-weight: bold; font-size: 20px; margin-bottom: 16px; color: #1a202c;">
+      ✏️ 改图
+    </div>
+    <div style="color: #718096; font-size: 14px; margin-bottom: 24px;">
+      使用 ${providerName} 编辑图片
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+      <div style="width: 40px; height: 40px; border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; animation: ai-draw-spin 1s linear infinite;"></div>
+      <div style="color: #4a5568; font-size: 14px;">
+        正在准备图片，请稍候...
+      </div>
+      <div style="color: #a0aec0; font-size: 12px;">
+        下载图片并上传到图床
+      </div>
+    </div>
+    <style>@keyframes ai-draw-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+  `;
+
+  container.appendChild(modal);
+  document.body.appendChild(container);
+}
+
+// 下载图片并转为base64
+async function downloadImageAsBase64(imageUrl) {
+  try {
+    // 使用canvas来绕过跨域限制
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    return new Promise((resolve, reject) => {
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+
+          // 转换为base64
+          const base64 = canvas.toDataURL("image/png");
+          resolve(base64);
+        } catch (error) {
+          reject(new Error("图片转换失败: " + error.message));
+        }
+      };
+
+      img.onerror = () => {
+        reject(new Error("图片加载失败，可能存在跨域限制"));
+      };
+
+      // 添加时间戳来避免缓存
+      img.src = imageUrl + (imageUrl.includes("?") ? "&" : "?") + "_t=" + Date.now();
+    });
+  } catch (error) {
+    throw new Error("下载图片失败: " + error.message);
+  }
+}
+
 // 显示改图对话框
-function showEditDialog(imageUrl, providerId, providerName) {
+function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploaded) {
   // 移除已有的对话框
   const existing = document.getElementById("ai-draw-edit-modal");
   if (existing) existing.remove();
@@ -520,14 +612,27 @@ function showEditDialog(imageUrl, providerId, providerName) {
   `;
 
   // 根据是否有图片URL决定显示内容
-  const imagePreviewHtml = imageUrl 
+  // 如果已自动上传，显示提示信息并改变按钮文字
+  const uploadStatusHtml = isAutoUploaded
+    ? `<div data-auto-upload style="background: #f0fff4; border: 1px solid #9ae6b4; color: #276749; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+        <span>✅</span>
+        <span>图片已自动上传到图床，可直接改图</span>
+      </div>`
+    : '';
+
+  const reuploadButtonHtml = isAutoUploaded
+    ? `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 13px; cursor: pointer;">🔄 重新上传</button>`
+    : `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;">📤 上传到图床</button>`;
+
+  const imagePreviewHtml = imageUrl
     ? `
       <div id="ai-edit-image-preview" style="position: relative; margin-bottom: 16px;">
+        ${uploadStatusHtml}
         <img src="${imageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
         <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
           <input type="file" id="ai-edit-file-input" accept="image/*" style="display: none;">
           <button id="ai-edit-select-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 13px; cursor: pointer;">📁 选择图片</button>
-          <button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;">📤 上传到图床</button>
+          ${reuploadButtonHtml}
         </div>
         <div id="ai-edit-upload-status" style="display: none; margin-top: 8px; padding: 8px; border-radius: 6px; font-size: 14px;"></div>
       </div>
@@ -547,6 +652,14 @@ function showEditDialog(imageUrl, providerId, providerName) {
     `
     : '';
 
+  // 警告信息HTML
+  const warningHtml = warning
+    ? `<div style="background: #fffbeb; border: 1px solid #fbbf24; color: #92400e; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+        <span>⚠️</span>
+        <span>${warning}</span>
+      </div>`
+    : '';
+
   modal.innerHTML = `
     <div style="font-weight: bold; font-size: 20px; margin-bottom: 8px; color: #1a202c; display: flex; align-items: center; gap: 8px;">
       ✏️ 改图
@@ -555,6 +668,7 @@ function showEditDialog(imageUrl, providerId, providerName) {
       使用 ${providerName} 编辑图片
     </div>
 
+    ${warningHtml}
     ${imagePreviewHtml}
     ${imageSelectHtml}
 
@@ -740,6 +854,17 @@ function showEditDialog(imageUrl, providerId, providerName) {
         if (img) {
           img.src = newImageUrl;
         }
+        // 移除"已自动上传"的提示（如果有）
+        const autoUploadStatus = previewDiv.querySelector('[data-auto-upload]');
+        if (autoUploadStatus) {
+          autoUploadStatus.remove();
+        }
+        // 恢复"上传到图床"按钮为原始样式
+        const reuploadBtn = previewDiv.querySelector('#ai-edit-reupload-btn');
+        if (reuploadBtn) {
+          reuploadBtn.textContent = '📤 上传到图床';
+          reuploadBtn.style.cssText = 'padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;';
+        }
       }
     } else {
       // 如果原来没有图片，创建预览区域并替换文件选择区域
@@ -755,17 +880,17 @@ function showEditDialog(imageUrl, providerId, providerName) {
             </div>
           </div>
         `;
-        
+
         // 重新绑定新的按钮
         const newFileInput = modal.querySelector('#ai-edit-file-input-new');
         const newSelectBtn = modal.querySelector('#ai-edit-select-btn-new');
         const newReuploadBtn = modal.querySelector('#ai-edit-reupload-btn-new');
-        
+
         if (newSelectBtn && newFileInput) {
           newSelectBtn.onclick = () => {
             newFileInput.click();
           };
-          
+
           newFileInput.onchange = () => {
             if (newFileInput.files[0]) {
               // 更新全局fileInput引用
@@ -774,7 +899,7 @@ function showEditDialog(imageUrl, providerId, providerName) {
             }
           };
         }
-        
+
         if (newReuploadBtn) {
           newReuploadBtn.onclick = () => handleCurrentImageUpload();
         }

@@ -143,17 +143,89 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       // 检查是否有图片URL或配置了上传服务
       const uploadServices = settings?.imageUploadServices || [];
       const hasUploadService = uploadServices.some(service => service.isActive);
-      
+
       if (info.srcUrl) {
-        // 有右键图片，直接使用
-        chrome.tabs
-          .sendMessage(tab.id, {
-            action: "showEditDialog",
-            imageUrl: info.srcUrl,
-            providerId: providerId,
-            providerName: provider.name,
-          })
-          .catch((err) => console.log("页面未就绪，消息未发送:", err));
+        // 有右键图片
+        // 检查图片URL类型
+        if (info.srcUrl.startsWith("data:")) {
+          // 已经是base64格式，直接使用
+          chrome.tabs
+            .sendMessage(tab.id, {
+              action: "showEditDialog",
+              imageUrl: info.srcUrl,
+              providerId: providerId,
+              providerName: provider.name,
+            })
+            .catch((err) => console.log("页面未就绪，消息未发送:", err));
+        } else if (hasUploadService) {
+          // 普通URL且有上传服务，尝试下载图片并自动上传
+          try {
+            // 通知页面显示准备中状态
+            chrome.tabs
+              .sendMessage(tab.id, {
+                action: "showEditDialogPreparing",
+                providerId: providerId,
+                providerName: provider.name,
+              })
+              .catch(() => {});
+
+            // 通过content script下载图片并转为base64
+            const response = await chrome.tabs.sendMessage(tab.id, {
+              action: "downloadImageAsBase64",
+              imageUrl: info.srcUrl,
+            });
+
+            if (response && response.success) {
+              // 下载成功，自动上传到图床
+              console.log("图片下载成功，开始自动上传到图床");
+              const uploadResult = await uploadImageToService(
+                response.base64,
+                "edit-image.png",
+                settings
+              );
+
+              if (uploadResult.success) {
+                // 上传成功，使用图床URL显示对话框，并标记为已自动上传
+                chrome.tabs
+                  .sendMessage(tab.id, {
+                    action: "showEditDialog",
+                    imageUrl: uploadResult.imageUrl,
+                    providerId: providerId,
+                    providerName: provider.name,
+                    isAutoUploaded: true,
+                  })
+                  .catch((err) => console.log("页面未就绪，消息未发送:", err));
+              } else {
+                throw new Error(uploadResult.error || "上传失败");
+              }
+            } else {
+              throw new Error(response?.error || "下载图片失败");
+            }
+          } catch (error) {
+            console.error("自动上传图片失败:", error);
+            // 上传失败，回退到原来的方式（直接使用URL）
+            // 但提示用户可能无法访问
+            chrome.tabs
+              .sendMessage(tab.id, {
+                action: "showEditDialog",
+                imageUrl: info.srcUrl,
+                providerId: providerId,
+                providerName: provider.name,
+                warning: "该图片可能有访问限制，如果改图失败请尝试使用本地图片上传功能",
+              })
+              .catch((err) => console.log("页面未就绪，消息未发送:", err));
+          }
+        } else {
+          // 没有上传服务，直接使用原URL（可能会失败）
+          chrome.tabs
+            .sendMessage(tab.id, {
+              action: "showEditDialog",
+              imageUrl: info.srcUrl,
+              providerId: providerId,
+              providerName: provider.name,
+            })
+            .catch((err) => console.log("页面未就绪，消息未发送:", err));
+        }
       } else if (hasUploadService) {
         // 没有右键图片但有上传服务，显示文件选择对话框
         chrome.tabs
@@ -444,7 +516,13 @@ async function generateWithCustomAPI(prompt, config) {
         // 普通URL图片
         const response = await fetch(imageUrl);
         if (!response.ok) {
-          throw new Error(`无法下载图片: HTTP ${response.status}`);
+          const err = new Error(`无法下载图片: HTTP ${response.status}`);
+          err.debugData = {
+            providerName: config.name,
+            request: `fetch(${imageUrl})`,
+            response: { status: response.status, statusText: response.statusText },
+          };
+          throw err;
         }
         imageBlob = await response.blob();
       }
@@ -490,7 +568,15 @@ async function generateWithCustomAPI(prompt, config) {
       
     } catch (error) {
       console.error("准备multipart请求失败:", error);
-      throw new Error(`图片处理失败: ${error.message}`);
+      // 如果错误已经有 debugData，直接抛出；否则添加 debugData
+      if (!error.debugData) {
+        error.debugData = {
+          providerName: config.name,
+          request: { imageUrl: imageUrl?.substring(0, 100) + "...", operationType },
+          response: null,
+        };
+      }
+      throw error;
     }
   } else {
     // 使用JSON格式（原有逻辑）
@@ -603,13 +689,21 @@ async function generateWithCustomAPI(prompt, config) {
     console.log("进入异步轮询模式...");
     const jobId = getValueByPath(responseData, jobIdPath);
     if (!jobId) {
-      throw new Error(`无法获取任务ID，路径: ${jobIdPath}`);
+      const err = new Error(`无法获取任务ID，路径: ${jobIdPath}`);
+      err.debugData = {
+        providerName: config.name,
+        request: isMultipartRequest ? "FormData (multipart)" : requestBody,
+        response: responseData,
+      };
+      throw err;
     }
 
     const actualPollUrl = pollUrl.replace("{id}", jobId);
     const intervalMs = (pollInterval || 2) * 1000;
     const maxAttempts = 60; // 防止无限循环，最大轮询次数
     let attempts = 0;
+    let lastPollData = null;
+    let lastStatus = null;
 
     while (attempts < maxAttempts) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -620,9 +714,11 @@ async function generateWithCustomAPI(prompt, config) {
       if (!pollResponse.ok) continue; // 忽略临时错误
 
       const pollData = await pollResponse.json();
+      lastPollData = pollData;
       console.log("轮询响应数据:", pollData); // 方便调试
 
       let status = getValueByPath(pollData, statusPath);
+      lastStatus = status;
       console.log(`提取状态 (${statusPath}):`, status);
 
       if (status === undefined || status === null) {
@@ -661,12 +757,24 @@ async function generateWithCustomAPI(prompt, config) {
 
       // 检查失败 (可选，简单起见如果状态含有 fail/error 字样则报错)
       if (/fail|error/i.test(String(status))) {
-        throw new Error(`任务失败，状态: ${status}`);
+        const err = new Error(`任务失败，状态: ${status}`);
+        err.debugData = {
+          providerName: config.name,
+          request: isMultipartRequest ? "FormData (multipart)" : requestBody,
+          response: { jobId, lastStatus, lastPollData, attempts },
+        };
+        throw err;
       }
     }
 
     if (attempts >= maxAttempts) {
-      throw new Error("轮询超时");
+      const err = new Error("轮询超时");
+      err.debugData = {
+        providerName: config.name,
+        request: isMultipartRequest ? "FormData (multipart)" : requestBody,
+        response: { jobId, lastStatus, lastPollData, attempts, maxAttempts },
+      };
+      throw err;
     }
   }
 
@@ -1105,38 +1213,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.action === "editImage") {
     (async () => {
-      const { settings } = await chrome.storage.local.get("settings");
-      const provider = settings.providers.find(
-        (p) => p.id === message.providerId,
-      );
-      if (!provider) {
-        sendResponse({ success: false, error: "服务商不存在" });
-        return;
+      try {
+        const { settings } = await chrome.storage.local.get("settings");
+        const provider = settings.providers.find(
+          (p) => p.id === message.providerId,
+        );
+        if (!provider) {
+          sendResponse({ success: false, error: "服务商不存在" });
+          return;
+        }
+
+        const [activeTab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        const tabId = activeTab?.id;
+
+        let imageUrl = message.imageUrl;
+        
+        // 如果是使用本地文件的multipart请求
+        if (message.useLocalFile && message.imageData) {
+          // 直接使用base64数据作为imageUrl
+          imageUrl = message.imageData;
+          console.log("使用本地文件数据进行改图，文件名:", message.fileName);
+        }
+
+        await handleGenerateImage(
+          message.prompt,
+          provider,
+          tabId,
+          imageUrl,
+          "edit",
+        );
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error("改图请求处理失败:", error);
+        // handleGenerateImage 内部已经处理了错误通知
+        // 这里只需要确保 sendResponse 被调用
+        sendResponse({ success: false, error: error.message });
       }
-
-      const [activeTab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      const tabId = activeTab?.id;
-
-      let imageUrl = message.imageUrl;
-      
-      // 如果是使用本地文件的multipart请求
-      if (message.useLocalFile && message.imageData) {
-        // 直接使用base64数据作为imageUrl
-        imageUrl = message.imageData;
-        console.log("使用本地文件数据进行改图，文件名:", message.fileName);
-      }
-
-      await handleGenerateImage(
-        message.prompt,
-        provider,
-        tabId,
-        imageUrl,
-        "edit",
-      );
-      sendResponse({ success: true });
     })();
     return true;
   }
