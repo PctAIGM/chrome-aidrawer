@@ -2,14 +2,23 @@
 // 动态导入公共模块
 let formatErrorMessage, fileToBase64, blobToBase64;
 
+console.log("Content script loaded and initializing...");
+
 (async () => {
-  const common = await import(chrome.runtime.getURL('lib/common.js'));
-  formatErrorMessage = common.formatErrorMessage;
-  fileToBase64 = common.fileToBase64;
-  blobToBase64 = common.blobToBase64;
+  try {
+    const common = await import(chrome.runtime.getURL('lib/common.js'));
+    formatErrorMessage = common.formatErrorMessage;
+    fileToBase64 = common.fileToBase64;
+    blobToBase64 = common.blobToBase64;
+    console.log("Common modules loaded successfully");
+  } catch (error) {
+    console.error("Failed to load common modules:", error);
+  }
 })();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("Content script received message:", message.action);
+  
   if (message.action === "getSelection") {
     const selection = window.getSelection().toString().trim();
     sendResponse({ selectionText: selection });
@@ -33,10 +42,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       debugData: message.debugData,
     });
   } else if (message.action === "showEditDialog") {
-    showEditDialog(message.imageUrl, message.providerId, message.providerName, message.warning, message.isAutoUploaded);
-  } else if (message.action === "showEditDialogPreparing") {
-    // 显示准备中状态
-    showEditDialogPreparing(message.providerName);
+    showEditDialog(message.imageUrl, message.providerId, message.providerName, message.warning);
   } else if (message.action === "downloadImageAsBase64") {
     // 下载图片并转为base64
     downloadImageAsBase64(message.imageUrl)
@@ -157,6 +163,77 @@ function showErrorModal(error, prompt, debugData) {
   });
 }
 
+// 显示分享后的图片URL
+function showSharedImageUrl(imageUrl, prompt) {
+  // 移除已有的分享URL显示区域
+  const existingShareUrlDiv = document.getElementById("ai-draw-shared-url");
+  if (existingShareUrlDiv) {
+    existingShareUrlDiv.remove();
+  }
+
+  // 创建分享URL显示区域
+  const shareUrlDiv = document.createElement("div");
+  shareUrlDiv.id = "ai-draw-shared-url";
+  shareUrlDiv.style.cssText = `
+    margin-top: 16px; padding: 16px; background: #f0fff4; border: 1px solid #9ae6b4;
+    border-radius: 12px; font-size: 14px; word-break: break-all;
+  `;
+
+  shareUrlDiv.innerHTML = `
+    <div style="color: #2f855a; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+      <span>🔗</span>
+      <span>分享成功！图片已上传到相册</span>
+    </div>
+    <div style="color: #4a5568; margin-bottom: 8px; font-weight: 500;">分享链接：</div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <input type="text" value="${imageUrl}" readonly style="
+        flex: 1; padding: 8px 12px; border: 1px solid #9ae6b4; border-radius: 6px;
+        background: white; font-size: 13px; color: #374151;
+      ">
+      <button class="copy-shared-url-btn" style="
+        padding: 8px 16px; background: #48bb78; color: white; border: none;
+        border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; font-weight: 500;
+      ">复制链接</button>
+    </div>
+  `;
+
+  // 找到模态框中的按钮区域，插入到按钮上方
+  const modal = document.querySelector("#ai-draw-modal-container .ai-draw-modal, #ai-draw-modal-container > div > div");
+  const buttonArea = modal?.querySelector("div[style*='display: flex'][style*='gap: 12px'][style*='justify-content: center']");
+  
+  if (buttonArea && buttonArea.parentNode) {
+    buttonArea.parentNode.insertBefore(shareUrlDiv, buttonArea);
+  }
+
+  // 绑定复制按钮事件
+  const copyBtn = shareUrlDiv.querySelector(".copy-shared-url-btn");
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      const originalText = copyBtn.textContent;
+      
+      try {
+        await navigator.clipboard.writeText(imageUrl);
+        copyBtn.textContent = "✅ 已复制";
+        copyBtn.style.background = "#22c55e";
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#48bb78";
+        }, 2000);
+      } catch (error) {
+        console.error("复制分享链接失败:", error);
+        copyBtn.textContent = "❌ 失败";
+        copyBtn.style.background = "#f56565";
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#48bb78";
+        }, 2000);
+      }
+    };
+  }
+}
+
 // 通用模态框创建逻辑
 function createModal({ title, content, prompt, buttons, debugData }) {
   // 移除已有的模态框
@@ -176,9 +253,10 @@ function createModal({ title, content, prompt, buttons, debugData }) {
   const modal = document.createElement("div");
   modal.style.cssText = `
     background: white; padding: 24px; border-radius: 16px;
-    max-width: 700px; width: 100%; max-height: 85vh; overflow-y: auto;
+    max-width: 90vw; width: 100%; max-height: 90vh; 
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    position: relative; text-align: center;
+    position: relative; text-align: center; display: flex; flex-direction: column;
+    overflow: hidden;
   `;
 
   let buttonsHtml = buttons
@@ -193,26 +271,28 @@ function createModal({ title, content, prompt, buttons, debugData }) {
     .join("");
 
   modal.innerHTML = `
-    <div style="font-weight: bold; font-size: 20px; margin-bottom: 20px; color: #1a202c;">${title}</div>
-    <div style="margin-bottom: 16px;">${content}</div>
-
-    <div id="ai-draw-prompt-container" style="margin-bottom: 24px;">
-      <div id="ai-draw-prompt-toggle" style="
-        font-size: 13px; color: #667eea; cursor: pointer; margin-bottom: 8px;
-        display: flex; align-items: center; justify-content: center; gap: 4px;
-      ">
-        <span id="ai-draw-prompt-icon">👁️‍🗨️</span> 显示/隐藏提示词
-      </div>
-      <div id="ai-draw-prompt-text" style="
-        font-size: 14px; color: #718096; line-height: 1.5; font-style: italic;
-        background: #f8fafc; padding: 12px; border-radius: 8px; display: none;
-        text-align: left; word-break: break-all;
-      ">
-        "${prompt}"
+    <div style="font-weight: bold; font-size: 20px; margin-bottom: 20px; color: #1a202c; flex-shrink: 0;">${title}</div>
+    <div style="flex: 1; overflow-y: auto; margin-bottom: 16px; min-height: 0;">
+      ${content}
+      
+      <div id="ai-draw-prompt-container" style="margin-bottom: 24px;">
+        <div id="ai-draw-prompt-toggle" style="
+          font-size: 13px; color: #667eea; cursor: pointer; margin-bottom: 8px;
+          display: flex; align-items: center; justify-content: center; gap: 4px;
+        ">
+          <span id="ai-draw-prompt-icon">👁️‍🗨️</span> 显示/隐藏提示词
+        </div>
+        <div id="ai-draw-prompt-text" style="
+          font-size: 14px; color: #718096; line-height: 1.5; font-style: italic;
+          background: #f8fafc; padding: 12px; border-radius: 8px; display: none;
+          text-align: left; word-break: break-all;
+        ">
+          "${prompt}"
+        </div>
       </div>
     </div>
 
-    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; position: sticky; bottom: 0; background: white; padding-top: 12px; margin-top: -8px;">
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; flex-shrink: 0; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 8px;">
       ${buttonsHtml}
     </div>
   `;
@@ -227,9 +307,12 @@ function createModal({ title, content, prompt, buttons, debugData }) {
     toggle.onclick = () => {
       const isHidden = promptText.style.display === "none";
       promptText.style.display = isHidden ? "block" : "none";
-      // 自动滚动到按钮区域
+      // 自动滚动到提示词区域
       if (isHidden) {
-        setTimeout(() => (modal.scrollTop = modal.scrollHeight), 50);
+        const contentArea = modal.querySelector('div[style*="flex: 1"]');
+        if (contentArea) {
+          setTimeout(() => (contentArea.scrollTop = contentArea.scrollHeight), 50);
+        }
       }
     };
   }
@@ -279,9 +362,14 @@ async function showResultModal(imageUrl, prompt, debugData) {
   }
 
   const imgHtml = `
-    <div id="ai-draw-image-wrapper" style="position: relative; margin-bottom: 20px; cursor: pointer; overflow: hidden; border-radius: 12px; line-height: 0;">
+    <div id="ai-draw-image-wrapper" style="
+      position: relative; margin-bottom: 20px; cursor: pointer; 
+      border-radius: 12px; line-height: 0; display: flex; justify-content: center;
+      max-height: 60vh; overflow: hidden;
+    ">
       <img id="ai-draw-result-img" src="${imageUrl}" style="
-        width: 100%; border-radius: 12px; border: 1px solid #edf2f7;
+        max-width: 100%; max-height: 60vh; width: auto; height: auto;
+        border-radius: 12px; border: 1px solid #edf2f7; object-fit: contain;
         transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         ${!allowNSFW ? "filter: blur(40px);" : ""}
       ">
@@ -425,6 +513,10 @@ async function showResultModal(imageUrl, prompt, debugData) {
           btn.textContent = "✅";
           btn.style.background = "#48bb78";
           btn.style.color = "white";
+          
+          // 显示分享后的图片URL
+          showSharedImageUrl(res.imageUrl, prompt);
+          
           setTimeout(() => {
             btn.textContent = originalText;
             btn.style.background = "";
@@ -504,53 +596,6 @@ function showDebugModal(debugData) {
   };
 }
 
-// 显示改图准备中状态
-function showEditDialogPreparing(providerName) {
-  // 移除已有的对话框
-  const existing = document.getElementById("ai-draw-edit-modal");
-  if (existing) existing.remove();
-
-  const container = document.createElement("div");
-  container.id = "ai-draw-edit-modal";
-  container.style.cssText = `
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7); z-index: 999999;
-    padding: 20px; box-sizing: border-box;
-    display: flex; align-items: center; justify-content: center;
-    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-  `;
-
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-    background: white; padding: 32px; border-radius: 16px;
-    max-width: 400px; width: 100%;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-    text-align: center;
-  `;
-
-  modal.innerHTML = `
-    <div style="font-weight: bold; font-size: 20px; margin-bottom: 16px; color: #1a202c;">
-      ✏️ 改图
-    </div>
-    <div style="color: #718096; font-size: 14px; margin-bottom: 24px;">
-      使用 ${providerName} 编辑图片
-    </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
-      <div style="width: 40px; height: 40px; border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; animation: ai-draw-spin 1s linear infinite;"></div>
-      <div style="color: #4a5568; font-size: 14px;">
-        正在准备图片，请稍候...
-      </div>
-      <div style="color: #a0aec0; font-size: 12px;">
-        下载图片并上传到图床
-      </div>
-    </div>
-    <style>@keyframes ai-draw-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-  `;
-
-  container.appendChild(modal);
-  document.body.appendChild(container);
-}
-
 // 下载图片并转为base64
 async function downloadImageAsBase64(imageUrl) {
   try {
@@ -588,7 +633,9 @@ async function downloadImageAsBase64(imageUrl) {
 }
 
 // 显示改图对话框
-function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploaded) {
+function showEditDialog(imageUrl, providerId, providerName, warning) {
+  console.log("showEditDialog called with:", { imageUrl, providerId, providerName, warning });
+  
   // 移除已有的对话框
   const existing = document.getElementById("ai-draw-edit-modal");
   if (existing) existing.remove();
@@ -612,22 +659,11 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
   `;
 
   // 根据是否有图片URL决定显示内容
-  // 如果已自动上传，显示提示信息并改变按钮文字
-  const uploadStatusHtml = isAutoUploaded
-    ? `<div data-auto-upload style="background: #f0fff4; border: 1px solid #9ae6b4; color: #276749; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px;">
-        <span>✅</span>
-        <span>图片已自动上传到图床，可直接改图</span>
-      </div>`
-    : '';
-
-  const reuploadButtonHtml = isAutoUploaded
-    ? `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 13px; cursor: pointer;">🔄 重新上传</button>`
-    : `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;">📤 上传到图床</button>`;
+  const reuploadButtonHtml = `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;">📤 上传到图床</button>`;
 
   const imagePreviewHtml = imageUrl
     ? `
       <div id="ai-edit-image-preview" style="position: relative; margin-bottom: 16px;">
-        ${uploadStatusHtml}
         <img src="${imageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
         <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
           <input type="file" id="ai-edit-file-input" accept="image/*" style="display: none;">
@@ -654,9 +690,12 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
 
   // 警告信息HTML
   const warningHtml = warning
-    ? `<div style="background: #fffbeb; border: 1px solid #fbbf24; color: #92400e; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
-        <span>⚠️</span>
-        <span>${warning}</span>
+    ? `<div style="background: #fffbeb; border: 1px solid #fbbf24; color: #92400e; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; display: flex; align-items: flex-start; gap: 8px;">
+        <span style="flex-shrink: 0;">⚠️</span>
+        <div>
+          <div style="font-weight: 600; margin-bottom: 4px;">兼容性提示</div>
+          <div>${warning}</div>
+        </div>
       </div>`
     : '';
 
@@ -774,7 +813,8 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
         // 更新预览图片
         updateImagePreview(currentImageUrl);
         
-        showUploadStatus('图片上传成功！', 'success');
+        // 直接显示URL
+        showImageUrlInEditDialog(result.imageUrl);
       } else {
         const errorMsg = formatErrorMessage(result.error || '上传失败');
         throw new Error(errorMsg);
@@ -792,6 +832,8 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
 
   // 处理当前图片上传到图床
   async function handleCurrentImageUpload() {
+    console.log("handleCurrentImageUpload called, currentImageUrl:", currentImageUrl);
+    
     if (!currentImageUrl) {
       showUploadStatus('没有可上传的图片', 'error');
       return;
@@ -808,27 +850,103 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
       
       if (currentImageUrl.startsWith('data:')) {
         // 如果已经是base64格式，直接使用
+        console.log("Using base64 image data directly");
         imageData = currentImageUrl;
       } else {
-        // 如果是URL，需要先下载转换为base64
-        const response = await fetch(currentImageUrl);
-        const blob = await response.blob();
-        imageData = await blobToBase64(blob);
+        // 如果是URL，使用 content script 的 downloadImageAsBase64（可以利用页面上下文）
+        console.log("Downloading image via content script canvas method:", currentImageUrl);
+        try {
+          imageData = await downloadImageAsBase64(currentImageUrl);
+          console.log("Image downloaded successfully via canvas, base64 length:", imageData.length);
+        } catch (downloadError) {
+          console.error("图片下载失败:", downloadError);
+          // 下载失败时，提示用户选择本地文件
+          showUploadStatus('图片下载失败，可能是防盗链限制。请点击下方按钮选择本地图片文件上传', 'error');
+          
+          // 创建文件选择按钮
+          const fileInputBtn = document.createElement('button');
+          fileInputBtn.textContent = '📁 选择本地图片';
+          fileInputBtn.style.cssText = 'margin-top: 10px; padding: 8px 16px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 14px; cursor: pointer;';
+          
+          const statusDiv = modal.querySelector('#ai-edit-upload-status');
+          if (statusDiv && !statusDiv.querySelector('input[type="file"]')) {
+            statusDiv.appendChild(fileInputBtn);
+            
+            fileInputBtn.onclick = () => {
+              const fileInput = document.createElement('input');
+              fileInput.type = 'file';
+              fileInput.accept = 'image/*';
+              fileInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                  reuploadBtn.disabled = true;
+                  reuploadBtn.textContent = '上传中...';
+                  hideUploadStatus();
+                  
+                  try {
+                    // 将文件转换为 base64
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                      try {
+                        imageData = event.target.result;
+                        
+                        // 上传图片
+                        const result = await chrome.runtime.sendMessage({
+                          action: 'uploadImage',
+                          imageData: imageData,
+                          fileName: file.name
+                        });
+
+                        if (result.success) {
+                          currentImageUrl = result.imageUrl;
+                          updateImagePreview(currentImageUrl);
+                          showImageUrlInEditDialog(result.imageUrl);
+                        } else {
+                          throw new Error(result.error || '上传失败');
+                        }
+                      } catch (error) {
+                        const errorMsg = formatErrorMessage(error);
+                        showUploadStatus('上传失败: ' + errorMsg, 'error');
+                      } finally {
+                        reuploadBtn.disabled = false;
+                        reuploadBtn.textContent = originalText;
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  } catch (error) {
+                    const errorMsg = formatErrorMessage(error);
+                    showUploadStatus('文件读取失败: ' + errorMsg, 'error');
+                    reuploadBtn.disabled = false;
+                    reuploadBtn.textContent = originalText;
+                  }
+                }
+              };
+              fileInput.click();
+            };
+          }
+          
+          reuploadBtn.disabled = false;
+          reuploadBtn.textContent = originalText;
+          return;
+        }
       }
       
+      console.log("Sending upload request to background script");
       const result = await chrome.runtime.sendMessage({
         action: 'uploadImage',
         imageData: imageData,
         fileName: 'current-image.png'
       });
 
+      console.log("Upload result:", result);
       if (result.success) {
         currentImageUrl = result.imageUrl;
         
         // 更新预览图片
         updateImagePreview(currentImageUrl);
         
-        showUploadStatus('图片已上传到图床！', 'success');
+        // 直接显示URL
+        showImageUrlInEditDialog(result.imageUrl);
       } else {
         const errorMsg = formatErrorMessage(result.error || '上传失败');
         throw new Error(errorMsg);
@@ -853,11 +971,6 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
         const img = previewDiv.querySelector('img');
         if (img) {
           img.src = newImageUrl;
-        }
-        // 移除"已自动上传"的提示（如果有）
-        const autoUploadStatus = previewDiv.querySelector('[data-auto-upload]');
-        if (autoUploadStatus) {
-          autoUploadStatus.remove();
         }
         // 恢复"上传到图床"按钮为原始样式
         const reuploadBtn = previewDiv.querySelector('#ai-edit-reupload-btn');
@@ -922,6 +1035,74 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
     }
   }
 
+  // 显示图片URL和复制按钮（改图对话框中）
+  function showImageUrlInEditDialog(imageUrl) {
+    // 移除已有的URL显示区域
+    const existingUrlDiv = modal.querySelector("#editDialogImageUrl");
+    if (existingUrlDiv) {
+      existingUrlDiv.remove();
+    }
+
+    // 创建简洁的URL显示区域
+    const urlDiv = document.createElement("div");
+    urlDiv.id = "editDialogImageUrl";
+    urlDiv.style.cssText = `
+      margin-top: 8px; padding: 8px 12px; background: #f0fdf4; border: 1px solid #86efac;
+      border-radius: 6px; font-size: 12px; display: flex; align-items: center; gap: 8px;
+    `;
+
+    urlDiv.innerHTML = `
+      <span style="color: #16a34a; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${imageUrl}</span>
+      <button class="copy-url-btn" title="复制图片链接" style="
+        padding: 4px 8px; background: transparent; color: #16a34a; border: 1px solid #86efac;
+        border-radius: 4px; font-size: 16px; cursor: pointer; line-height: 1;
+        transition: all 0.2s; flex-shrink: 0;
+      ">📋</button>
+    `;
+
+    // 插入到上传状态下方
+    if (uploadStatus && uploadStatus.parentNode) {
+      uploadStatus.parentNode.insertBefore(urlDiv, uploadStatus.nextSibling);
+    }
+
+    // 绑定复制按钮事件
+    const copyBtn = urlDiv.querySelector(".copy-url-btn");
+    if (copyBtn) {
+      copyBtn.onmouseover = () => {
+        copyBtn.style.background = "#dcfce7";
+      };
+      copyBtn.onmouseout = () => {
+        copyBtn.style.background = "transparent";
+      };
+      
+      copyBtn.onclick = async () => {
+        const originalText = copyBtn.textContent;
+        
+        try {
+          await navigator.clipboard.writeText(imageUrl);
+          copyBtn.textContent = "✓";
+          copyBtn.style.color = "#16a34a";
+          copyBtn.style.borderColor = "#86efac";
+          
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+          }, 1500);
+        } catch (error) {
+          console.error("复制失败:", error);
+          copyBtn.textContent = "✗";
+          copyBtn.style.color = "#dc2626";
+          copyBtn.style.borderColor = "#fca5a5";
+          
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.style.color = "#16a34a";
+            copyBtn.style.borderColor = "#86efac";
+          }, 1500);
+        }
+      };
+    }
+  }
+
   // 隐藏上传状态
   function hideUploadStatus() {
     if (uploadStatus) {
@@ -972,7 +1153,33 @@ function showEditDialog(imageUrl, providerId, providerName, warning, isAutoUploa
           debugData = request.debugData;
           debugBtn.style.display = "inline-block";
         }
-        errorDiv.textContent = request.error || "改图失败";
+        
+        let errorMessage = request.error || "改图失败";
+        
+        // 检查是否是图片访问相关的错误，提供更有用的建议
+        if (errorMessage.includes("无法下载图片") || 
+            errorMessage.includes("无法访问图片") || 
+            errorMessage.includes("跨域") || 
+            errorMessage.includes("CORS") ||
+            errorMessage.includes("安全策略")) {
+          
+          // 检查是否有上传服务
+          chrome.storage.local.get("settings").then(({settings}) => {
+            const uploadServices = settings?.imageUploadServices || [];
+            const hasUploadService = uploadServices.some(service => service.isActive);
+            
+            if (hasUploadService) {
+              errorMessage += "\n\n💡 建议解决方案：\n1. 使用下方的\"上传到图床\"功能\n2. 或选择本地图片文件进行改图";
+            } else {
+              errorMessage += "\n\n💡 建议解决方案：\n1. 在设置中配置图片上传服务\n2. 或右键保存图片到本地后重新上传";
+            }
+            
+            errorDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
+          });
+        } else {
+          errorDiv.textContent = errorMessage;
+        }
+        
         errorDiv.style.display = "block";
         submitBtn.disabled = false;
         submitBtn.textContent = "开始改图";

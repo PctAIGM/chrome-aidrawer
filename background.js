@@ -136,96 +136,59 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       handleGenerateImage(info.selectionText, provider, tab.id);
     }
   } else if (info.menuItemId.startsWith("edit-with-")) {
+    console.log("Edit menu clicked:", info.menuItemId, "srcUrl:", info.srcUrl);
     const providerId = info.menuItemId.replace("edit-with-", "");
     const { settings } = await chrome.storage.local.get("settings");
     const provider = settings.providers.find((p) => p.id === providerId);
+    console.log("Found provider:", provider);
     if (provider) {
       // 检查是否有图片URL或配置了上传服务
       const uploadServices = settings?.imageUploadServices || [];
       const hasUploadService = uploadServices.some(service => service.isActive);
 
       if (info.srcUrl) {
-        // 有右键图片
-        // 检查图片URL类型
+        // 有右键图片，检查是否有上传服务
+        const uploadServices = settings?.imageUploadServices || [];
+        const hasUploadService = uploadServices.some(service => service.isActive);
+        
+        let warningMessage = null;
+        
+        // 检查图片URL类型，给出相应提示
         if (info.srcUrl.startsWith("data:")) {
-          // 已经是base64格式，直接使用
-          chrome.tabs
-            .sendMessage(tab.id, {
-              action: "showEditDialog",
-              imageUrl: info.srcUrl,
-              providerId: providerId,
-              providerName: provider.name,
-            })
-            .catch((err) => console.log("页面未就绪，消息未发送:", err));
-        } else if (hasUploadService) {
-          // 普通URL且有上传服务，尝试下载图片并自动上传
-          try {
-            // 通知页面显示准备中状态
-            chrome.tabs
-              .sendMessage(tab.id, {
-                action: "showEditDialogPreparing",
-                providerId: providerId,
-                providerName: provider.name,
-              })
-              .catch(() => {});
-
-            // 通过content script下载图片并转为base64
-            const response = await chrome.tabs.sendMessage(tab.id, {
-              action: "downloadImageAsBase64",
-              imageUrl: info.srcUrl,
-            });
-
-            if (response && response.success) {
-              // 下载成功，自动上传到图床
-              console.log("图片下载成功，开始自动上传到图床");
-              const uploadResult = await uploadImageToService(
-                response.base64,
-                "edit-image.png",
-                settings
-              );
-
-              if (uploadResult.success) {
-                // 上传成功，使用图床URL显示对话框，并标记为已自动上传
-                chrome.tabs
-                  .sendMessage(tab.id, {
-                    action: "showEditDialog",
-                    imageUrl: uploadResult.imageUrl,
-                    providerId: providerId,
-                    providerName: provider.name,
-                    isAutoUploaded: true,
-                  })
-                  .catch((err) => console.log("页面未就绪，消息未发送:", err));
-              } else {
-                throw new Error(uploadResult.error || "上传失败");
-              }
-            } else {
-              throw new Error(response?.error || "下载图片失败");
-            }
-          } catch (error) {
-            console.error("自动上传图片失败:", error);
-            // 上传失败，回退到原来的方式（直接使用URL）
-            // 但提示用户可能无法访问
-            chrome.tabs
-              .sendMessage(tab.id, {
-                action: "showEditDialog",
-                imageUrl: info.srcUrl,
-                providerId: providerId,
-                providerName: provider.name,
-                warning: "该图片可能有访问限制，如果改图失败请尝试使用本地图片上传功能",
-              })
-              .catch((err) => console.log("页面未就绪，消息未发送:", err));
-          }
+          // Base64图片，通常可以直接使用
+          warningMessage = null;
+        } else if (info.srcUrl.includes("blob:") || info.srcUrl.includes("localhost") || info.srcUrl.includes("127.0.0.1")) {
+          // 本地或blob URL，可能有访问限制
+          warningMessage = hasUploadService 
+            ? "该图片可能有访问限制，如果改图失败请点击\"上传到图床\"按钮"
+            : "该图片可能有访问限制，建议配置图片上传服务以获得更好的兼容性";
         } else {
-          // 没有上传服务，直接使用原URL（可能会失败）
-          chrome.tabs
-            .sendMessage(tab.id, {
-              action: "showEditDialog",
-              imageUrl: info.srcUrl,
-              providerId: providerId,
-              providerName: provider.name,
-            })
-            .catch((err) => console.log("页面未就绪，消息未发送:", err));
+          // 普通网络图片，根据是否有上传服务给出不同提示
+          const domain = new URL(info.srcUrl).hostname;
+          warningMessage = hasUploadService 
+            ? `来自 ${domain} 的图片可能有跨域限制，如果改图失败请点击\"上传到图床\"按钮`
+            : `来自 ${domain} 的图片可能有跨域限制，建议配置图片上传服务以获得更好的兼容性`;
         }
+        
+        chrome.tabs
+          .sendMessage(tab.id, {
+            action: "showEditDialog",
+            imageUrl: info.srcUrl,
+            providerId: providerId,
+            providerName: provider.name,
+            warning: warningMessage,
+          })
+          .then(() => {
+            console.log("showEditDialog message sent successfully");
+          })
+          .catch((err) => {
+            // 静默处理：某些页面（如 Chrome 内部页面）无法注入 content script
+            if (err.message && err.message.includes("Receiving end does not exist")) {
+              console.log("无法在此页面使用改图功能（可能是特殊页面）");
+            } else {
+              console.log("消息发送失败:", err.message);
+            }
+          });
       } else if (hasUploadService) {
         // 没有右键图片但有上传服务，显示文件选择对话框
         chrome.tabs
@@ -235,7 +198,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             providerId: providerId,
             providerName: provider.name,
           })
-          .catch((err) => console.log("页面未就绪，消息未发送:", err));
+          .catch((err) => {
+            // 静默处理
+            if (!err.message || !err.message.includes("Receiving end does not exist")) {
+              console.log("消息发送失败:", err.message);
+            }
+          });
       } else {
         // 既没有图片也没有上传服务
         showNotification("请先配置图片上传服务或右键点击图片使用改图功能", "error");
@@ -516,7 +484,7 @@ async function generateWithCustomAPI(prompt, config) {
         // 普通URL图片
         const response = await fetch(imageUrl);
         if (!response.ok) {
-          const err = new Error(`无法下载图片: HTTP ${response.status}`);
+          const err = new Error(`无法下载图片: HTTP ${response.status}。这可能是由于网站的安全策略限制，建议使用图片上传功能或选择本地图片文件。`);
           err.debugData = {
             providerName: config.name,
             request: `fetch(${imageUrl})`,
@@ -568,6 +536,20 @@ async function generateWithCustomAPI(prompt, config) {
       
     } catch (error) {
       console.error("准备multipart请求失败:", error);
+      
+      // 检查是否是网络相关错误
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        // 可能是CORS或网络连接问题
+        const enhancedError = new Error("无法访问图片，可能是由于网站的跨域安全策略限制。建议使用图片上传功能或选择本地图片文件。");
+        enhancedError.debugData = {
+          providerName: config.name,
+          request: { imageUrl: imageUrl?.substring(0, 100) + "...", operationType },
+          response: null,
+          originalError: error.message,
+        };
+        throw enhancedError;
+      }
+      
       // 如果错误已经有 debugData，直接抛出；否则添加 debugData
       if (!error.debugData) {
         error.debugData = {
@@ -858,18 +840,69 @@ function setValueByPath(obj, path, value) {
 }
 
 async function downloadImageAsBase64(url) {
+  console.log("downloadImageAsBase64 开始下载:", url);
   try {
-    const response = await fetch(url);
+    // 从 URL 中提取 origin 作为 Referer
+    let referer = '';
+    try {
+      const urlObj = new URL(url);
+      referer = urlObj.origin + '/';
+      console.log("提取的 Referer:", referer);
+    } catch (e) {
+      console.warn("无法解析 URL:", e);
+    }
+    
+    const headers = {
+      'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    };
+    
+    // 添加 Referer（如果成功提取）
+    if (referer) {
+      headers['Referer'] = referer;
+    }
+    
+    const response = await fetch(url, { headers });
+    
+    console.log("下载响应:", {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type')
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    
+    // 检查是否真的是图片
+    if (!contentType || !contentType.startsWith('image/')) {
+      console.error("响应不是图片类型:", contentType);
+      throw new Error(`服务器返回的不是图片，而是: ${contentType || '未知类型'}`);
+    }
+    
     const blob = await response.blob();
+    console.log("Blob 创建成功:", {
+      size: blob.size,
+      type: blob.type
+    });
+    
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("图片转换失败"));
+      reader.onloadend = () => {
+        console.log("图片转换为 base64 成功，长度:", reader.result.length);
+        resolve(reader.result);
+      };
+      reader.onerror = () => {
+        console.error("FileReader 转换失败");
+        reject(new Error("图片转换失败"));
+      };
       reader.readAsDataURL(blob);
     });
   } catch (error) {
-    console.warn("下载图片失败，保留原链接:", error);
-    return url;
+    console.error("下载图片失败:", error);
+    throw new Error("下载图片失败: " + error.message);
   }
 }
 
@@ -1280,14 +1313,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+  // ==================== 图片下载和转换功能 ====================
+  if (message.action === "downloadAndConvertImage") {
+    console.log("收到图片下载请求:", {
+      action: message.action,
+      imageUrl: message.imageUrl ? message.imageUrl.substring(0, 100) + "..." : "none"
+    });
+    (async () => {
+      try {
+        console.log("开始下载图片:", message.imageUrl);
+        const base64 = await downloadImageAsBase64(message.imageUrl);
+        console.log("图片下载成功，base64 长度:", base64.length);
+        sendResponse({ success: true, base64: base64 });
+      } catch (e) {
+        console.error("图片下载失败:", e);
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
   // ==================== 图片上传功能 ====================
   if (message.action === "uploadImage") {
+    console.log("收到上传图片请求:", {
+      action: message.action,
+      fileName: message.fileName,
+      imageDataLength: message.imageData ? message.imageData.length : 0,
+      imageDataType: message.imageData ? (message.imageData.startsWith('data:') ? 'base64' : 'unknown') : 'none'
+    });
     (async () => {
       try {
         const { settings } = await chrome.storage.local.get("settings");
+        console.log("开始调用 uploadImageToService...");
         const result = await uploadImageToService(message.imageData, message.fileName, settings);
+        console.log("uploadImageToService 成功返回:", result);
         sendResponse(result);
       } catch (e) {
+        console.error("uploadImageToService 失败:", e);
         sendResponse({ success: false, error: e.message });
       }
     })();
@@ -1550,6 +1611,12 @@ async function webdavDownloadFile(config) {
  * 上传图片到配置的上传服务
  */
 async function uploadImageToService(imageData, fileName, settings) {
+  console.log("uploadImageToService 开始执行:", {
+    imageData: imageData ? `${imageData.substring(0, 50)}...` : 'null',
+    fileName: fileName,
+    settingsExists: !!settings
+  });
+
   // 获取激活的上传服务
   const uploadServices = settings.imageUploadServices || [];
   const activeService = uploadServices.find(service => service.isActive);
@@ -1561,6 +1628,7 @@ async function uploadImageToService(imageData, fileName, settings) {
   });
   
   if (!activeService) {
+    console.error("未找到激活的上传服务");
     throw new Error("未配置或激活图片上传服务");
   }
 
@@ -1575,143 +1643,212 @@ async function uploadImageToService(imageData, fileName, settings) {
     customParams: imageUploadCustomParams
   } = activeService;
 
+  console.log("上传服务配置:", {
+    url: imageUploadUrl,
+    authType: imageUploadAuthType,
+    fieldName: imageUploadFieldName,
+    format: imageUploadFormat,
+    hasKey: !!imageUploadKey
+  });
+
   // 将base64转换为blob
-  const response = await fetch(imageData);
-  const blob = await response.blob();
+  console.log("开始转换 base64 为 blob...");
+  try {
+    // 从 base64 字符串中提取 MIME 类型
+    let mimeType = 'image/png'; // 默认类型
+    if (imageData.startsWith('data:')) {
+      const matches = imageData.match(/^data:([^;]+);/);
+      if (matches && matches[1]) {
+        mimeType = matches[1];
+        console.log("从 base64 中提取到 MIME 类型:", mimeType);
+      }
+    }
 
-  // 创建FormData
-  const formData = new FormData();
-  formData.append(imageUploadFieldName || 'source', blob, fileName || 'image.png');
-
-  // 构建请求头
-  const headers = {};
-  
-  // 根据认证方式设置认证信息
-  if (imageUploadKey) {
-    const authType = imageUploadAuthType || 'header';
-    const headerName = imageUploadHeaderName || 'X-API-Key';
+    const response = await fetch(imageData);
+    let blob = await response.blob();
     
-    switch (authType) {
-      case 'header':
-        headers[headerName] = imageUploadKey;
-        break;
-      case 'bearer':
-        headers["Authorization"] = `Bearer ${imageUploadKey}`;
-        break;
-      case 'param':
-        // 参数认证：将key添加到FormData中
-        formData.append('key', imageUploadKey);
-        break;
+    // 如果 blob 的 type 为空或不正确，创建一个新的 blob 并指定正确的类型
+    if (!blob.type || blob.type === 'application/octet-stream') {
+      console.log("Blob type 不正确，重新创建 blob 并指定 MIME 类型:", mimeType);
+      blob = new Blob([blob], { type: mimeType });
     }
-  }
-
-  // 如果指定了响应格式，添加到FormData
-  const format = imageUploadFormat || 'json';
-  if (format !== 'json') {
-    formData.append('format', format);
-  }
-
-  // 添加自定义参数（只使用"临时上传"和"通用"参数）
-  if (imageUploadCustomParams && typeof imageUploadCustomParams === 'object') {
-    Object.entries(imageUploadCustomParams).forEach(([key, paramConfig]) => {
-      if (key && paramConfig !== undefined && paramConfig !== null && paramConfig !== '') {
-        let value, usage;
-        
-        // 检查是否是新格式（包含usage信息）
-        if (paramConfig && typeof paramConfig === "object" && paramConfig.value !== undefined) {
-          value = paramConfig.value;
-          usage = paramConfig.usage || "common";
-        } else {
-          // 旧格式兼容
-          value = paramConfig;
-          usage = "common";
-        }
-        
-        // 只使用"临时上传"和"通用"参数
-        if (usage === "temp" || usage === "common") {
-          if (value !== '') {
-            formData.append(key, String(value));
-            console.log(`添加临时上传参数: ${key} = ${value} (${usage})`);
-          }
-        } else {
-          console.log(`跳过参数 ${key} (仅用于${usage})`);
-        }
-      }
+    
+    console.log("base64 转换成功:", {
+      blobSize: blob.size,
+      blobType: blob.type
     });
-  }
 
-  console.log("开始上传图片:", {
-    服务名称: activeService.name,
-    上传端点: imageUploadUrl,
-    认证方式: imageUploadAuthType,
-    文件字段名: imageUploadFieldName,
-    文件名: fileName,
-    文件大小: imageData ? Math.round(imageData.length / 1024) + 'KB' : '未知'
-  });
+    // 创建FormData
+    const formData = new FormData();
+    
+    // 根据 MIME 类型确定文件扩展名
+    let fileExtension = 'png';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+      fileExtension = 'jpg';
+    } else if (mimeType.includes('gif')) {
+      fileExtension = 'gif';
+    } else if (mimeType.includes('webp')) {
+      fileExtension = 'webp';
+    }
+    
+    const finalFileName = fileName || `image.${fileExtension}`;
+    formData.append(imageUploadFieldName || 'source', blob, finalFileName);
+    console.log("FormData 创建成功，添加了图片文件:", finalFileName);
 
-  const uploadResponse = await fetch(imageUploadUrl, {
-    method: "POST",
-    headers: headers,
-    body: formData,
-  });
-
-  if (!uploadResponse.ok) {
-    let errorMsg = `HTTP ${uploadResponse.status}`;
-    try {
-      const errorData = await uploadResponse.json();
-      errorMsg = errorData.message || errorData.error || errorData.status_txt || errorData.msg || errorData.detail;
-      if (!errorMsg) {
-        // 如果没有找到标准错误字段，尝试获取更多信息
-        const errorKeys = Object.keys(errorData);
-        if (errorKeys.length > 0) {
-          errorMsg = `服务器返回错误: ${JSON.stringify(errorData)}`;
-        } else {
-          errorMsg = `HTTP ${uploadResponse.status} - 未知错误`;
-        }
-      }
-    } catch (e) {
-      try {
-        const errorText = await uploadResponse.text();
-        errorMsg = errorText || `HTTP ${uploadResponse.status}`;
-      } catch (e2) {
-        errorMsg = `HTTP ${uploadResponse.status} - 无法解析错误信息`;
+    // 构建请求头
+    const headers = {};
+    
+    // 根据认证方式设置认证信息
+    if (imageUploadKey) {
+      const authType = imageUploadAuthType || 'header';
+      const headerName = imageUploadHeaderName || 'X-API-Key';
+      
+      switch (authType) {
+        case 'header':
+          headers[headerName] = imageUploadKey;
+          console.log(`添加认证头: ${headerName}`);
+          break;
+        case 'bearer':
+          headers["Authorization"] = `Bearer ${imageUploadKey}`;
+          console.log("添加 Bearer 认证");
+          break;
+        case 'param':
+          // 参数认证：将key添加到FormData中
+          formData.append('key', imageUploadKey);
+          console.log("添加 key 参数到 FormData");
+          break;
       }
     }
-    throw new Error("上传失败: " + errorMsg);
-  }
 
-  let imageUrl;
-  
-  if (format === 'txt') {
-    // 纯文本响应，直接作为URL
-    imageUrl = await uploadResponse.text();
-    imageUrl = imageUrl.trim();
-  } else {
-    // JSON响应，按路径提取
-    const responseData = await uploadResponse.json();
-    console.log("上传响应:", responseData);
+    // 如果指定了响应格式，添加到FormData
+    const format = imageUploadFormat || 'json';
+    if (format !== 'json') {
+      formData.append('format', format);
+      console.log(`添加格式参数: ${format}`);
+    }
 
-    // 提取图片URL
-    imageUrl = getValueByPath(responseData, imageUploadResponsePath || 'image.url');
+    // 添加自定义参数（只使用"临时上传"和"通用"参数）
+    if (imageUploadCustomParams && typeof imageUploadCustomParams === 'object') {
+      Object.entries(imageUploadCustomParams).forEach(([key, paramConfig]) => {
+        if (key && paramConfig !== undefined && paramConfig !== null && paramConfig !== '') {
+          let value, usage;
+          
+          // 检查是否是新格式（包含usage信息）
+          if (paramConfig && typeof paramConfig === "object" && paramConfig.value !== undefined) {
+            value = paramConfig.value;
+            usage = paramConfig.usage || "common";
+          } else {
+            // 旧格式兼容
+            value = paramConfig;
+            usage = "common";
+          }
+          
+          // 只使用"临时上传"和"通用"参数
+          if (usage === "temp" || usage === "common") {
+            if (value !== '') {
+              formData.append(key, String(value));
+              console.log(`添加临时上传参数: ${key} = ${value} (${usage})`);
+            }
+          } else {
+            console.log(`跳过参数 ${key} (仅用于${usage})`);
+          }
+        }
+      });
+    }
+
+    console.log("开始上传图片:", {
+      服务名称: activeService.name,
+      上传端点: imageUploadUrl,
+      认证方式: imageUploadAuthType,
+      文件字段名: imageUploadFieldName,
+      文件名: fileName,
+      文件大小: imageData ? Math.round(imageData.length / 1024) + 'KB' : '未知'
+    });
+
+    const uploadResponse = await fetch(imageUploadUrl, {
+      method: "POST",
+      headers: headers,
+      body: formData,
+    });
+
+    console.log("上传请求完成:", {
+      status: uploadResponse.status,
+      statusText: uploadResponse.statusText,
+      ok: uploadResponse.ok
+    });
+
+    if (!uploadResponse.ok) {
+      let errorMsg = `HTTP ${uploadResponse.status}`;
+      try {
+        const errorData = await uploadResponse.json();
+        console.log("上传失败，错误响应:", errorData);
+        errorMsg = errorData.message || errorData.error || errorData.status_txt || errorData.msg || errorData.detail;
+        if (!errorMsg) {
+          // 如果没有找到标准错误字段，尝试获取更多信息
+          const errorKeys = Object.keys(errorData);
+          if (errorKeys.length > 0) {
+            errorMsg = `服务器返回错误: ${JSON.stringify(errorData)}`;
+          } else {
+            errorMsg = `HTTP ${uploadResponse.status} - 未知错误`;
+          }
+        }
+      } catch (e) {
+        console.log("无法解析错误响应为 JSON，尝试文本:", e);
+        try {
+          const errorText = await uploadResponse.text();
+          console.log("错误响应文本:", errorText);
+          errorMsg = errorText || `HTTP ${uploadResponse.status}`;
+        } catch (e2) {
+          console.log("无法解析错误响应为文本:", e2);
+          errorMsg = `HTTP ${uploadResponse.status} - 无法解析错误信息`;
+        }
+      }
+      console.error("上传失败，最终错误信息:", errorMsg);
+      throw new Error("上传失败: " + errorMsg);
+    }
+
+    let imageUrl;
+    
+    if (format === 'txt') {
+      // 纯文本响应，直接作为URL
+      imageUrl = await uploadResponse.text();
+      imageUrl = imageUrl.trim();
+      console.log("文本格式响应，图片URL:", imageUrl);
+    } else {
+      // JSON响应，按路径提取
+      const responseData = await uploadResponse.json();
+      console.log("上传响应:", responseData);
+
+      // 提取图片URL
+      imageUrl = getValueByPath(responseData, imageUploadResponsePath || 'image.url');
+      
+      if (!imageUrl) {
+        // 如果按配置路径找不到，尝试常见的路径
+        const commonPaths = ['image.url', 'data.url', 'url', 'link', 'image.image.url'];
+        for (const path of commonPaths) {
+          imageUrl = getValueByPath(responseData, path);
+          if (imageUrl) {
+            console.log(`在路径 ${path} 找到图片URL:`, imageUrl);
+            break;
+          }
+        }
+      } else {
+        console.log(`在配置路径 ${imageUploadResponsePath} 找到图片URL:`, imageUrl);
+      }
+    }
     
     if (!imageUrl) {
-      // 如果按配置路径找不到，尝试常见的路径
-      const commonPaths = ['image.url', 'data.url', 'url', 'link', 'image.image.url'];
-      for (const path of commonPaths) {
-        imageUrl = getValueByPath(responseData, path);
-        if (imageUrl) {
-          console.log(`在路径 ${path} 找到图片URL:`, imageUrl);
-          break;
-        }
-      }
+      console.error("无法提取图片URL，响应路径:", imageUploadResponsePath);
+      throw new Error(`无法从响应中提取图片URL，路径: ${imageUploadResponsePath}`);
     }
-  }
-  
-  if (!imageUrl) {
-    throw new Error(`无法从响应中提取图片URL，路径: ${imageUploadResponsePath}`);
-  }
 
-  return { success: true, imageUrl: imageUrl };
+    console.log("上传成功，返回结果:", { success: true, imageUrl: imageUrl });
+    return { success: true, imageUrl: imageUrl };
+
+  } catch (error) {
+    console.error("uploadImageToService 执行过程中出错:", error);
+    throw error;
+  }
 }
 
 /**
@@ -1745,11 +1882,18 @@ async function uploadImageToAlbum(imageUrl, prompt, settings) {
     blob = await response.blob();
   } else {
     // 普通URL图片
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      throw new Error(`无法下载图片: HTTP ${response.status}`);
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`无法下载图片: HTTP ${response.status}。这可能是由于网站的安全策略限制。`);
+      }
+      blob = await response.blob();
+    } catch (fetchError) {
+      if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+        throw new Error("无法访问图片，可能是由于网站的跨域安全策略限制");
+      }
+      throw fetchError;
     }
-    blob = await response.blob();
   }
 
   // 创建FormData

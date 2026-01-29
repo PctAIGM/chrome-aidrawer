@@ -460,7 +460,9 @@ async function uploadImage() {
       uploadBtn.style.background = '#48bb78';
       uploadBtn.style.color = 'white';
       
+      // 显示图片URL和复制按钮
       showUploadStatus('图片上传成功！可以开始改图了', 'success');
+      showImageUrl(uploadedImageUrl);
     } else {
       const errorMsg = formatErrorMessage(result.error || '上传失败');
       throw new Error(errorMsg);
@@ -483,6 +485,83 @@ async function uploadImage() {
 }
 
 // 移除选择的图片
+// 显示图片URL和复制按钮
+function showImageUrl(imageUrl) {
+  // 移除已有的URL显示区域
+  const existingUrlDiv = document.getElementById("imageUrlDisplay");
+  if (existingUrlDiv) {
+    existingUrlDiv.remove();
+  }
+
+  // 创建URL显示区域
+  const urlDiv = document.createElement("div");
+  urlDiv.id = "imageUrlDisplay";
+  urlDiv.style.cssText = `
+    margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 8px; font-size: 13px; word-break: break-all;
+  `;
+
+  urlDiv.innerHTML = `
+    <div style="color: #4a5568; margin-bottom: 8px; font-weight: 500;">图片链接：</div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <input type="text" id="imageUrlInput" value="${imageUrl}" readonly style="
+        flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;
+        background: white; font-size: 12px; color: #374151;
+      ">
+      <button id="copyUrlBtn" style="
+        padding: 6px 12px; background: #667eea; color: white; border: none;
+        border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap;
+      ">复制</button>
+    </div>
+  `;
+
+  // 插入到上传状态下方
+  const uploadStatus = document.getElementById("uploadStatus");
+  if (uploadStatus && uploadStatus.parentNode) {
+    uploadStatus.parentNode.insertBefore(urlDiv, uploadStatus.nextSibling);
+  }
+
+  // 绑定复制按钮事件
+  const copyBtn = document.getElementById("copyUrlBtn");
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      const urlInput = document.getElementById("imageUrlInput");
+      const originalText = copyBtn.textContent;
+      
+      try {
+        await navigator.clipboard.writeText(imageUrl);
+        copyBtn.textContent = "✅ 已复制";
+        copyBtn.style.background = "#48bb78";
+        
+        // 选中输入框文本
+        urlInput.select();
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#667eea";
+        }, 2000);
+      } catch (error) {
+        console.error("复制失败:", error);
+        copyBtn.textContent = "❌ 失败";
+        copyBtn.style.background = "#f56565";
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#667eea";
+        }, 2000);
+      }
+    };
+  }
+}
+
+// 隐藏图片URL显示
+function hideImageUrl() {
+  const urlDiv = document.getElementById("imageUrlDisplay");
+  if (urlDiv) {
+    urlDiv.remove();
+  }
+}
+
 function removeSelectedImage() {
   const imagePreview = document.getElementById("imagePreview");
   const uploadImageBtn = document.getElementById("uploadImageBtn");
@@ -500,6 +579,7 @@ function removeSelectedImage() {
   uploadImageBtn.dataset.lastFileName = '';
   
   hideUploadStatus();
+  hideImageUrl();
   console.log("已移除选择的图片，重置上传状态");
 }
 

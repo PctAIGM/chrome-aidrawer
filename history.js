@@ -716,6 +716,80 @@ async function checkUploadServiceAndShowButtons() {
   }
 }
 
+// 显示上传后的图片URL
+function showUploadedImageUrl(imageUrl, uploadBtn) {
+  // 找到按钮所在的卡片
+  const card = uploadBtn.closest('.history-card');
+  if (!card) return;
+
+  // 移除已有的URL显示区域
+  const existingUrlDiv = card.querySelector('.uploaded-url-display');
+  if (existingUrlDiv) {
+    existingUrlDiv.remove();
+  }
+
+  // 创建URL显示区域
+  const urlDiv = document.createElement('div');
+  urlDiv.className = 'uploaded-url-display';
+  urlDiv.style.cssText = `
+    margin-top: 12px; padding: 12px; background: #f0fff4; border: 1px solid #9ae6b4;
+    border-radius: 8px; font-size: 13px; word-break: break-all;
+  `;
+
+  urlDiv.innerHTML = `
+    <div style="color: #2f855a; margin-bottom: 8px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+      <span>🔗</span>
+      <span>已上传到相册</span>
+    </div>
+    <div style="color: #4a5568; margin-bottom: 6px; font-weight: 500; font-size: 12px;">分享链接：</div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <input type="text" value="${imageUrl}" readonly style="
+        flex: 1; padding: 6px 8px; border: 1px solid #9ae6b4; border-radius: 4px;
+        background: white; font-size: 12px; color: #374151;
+      ">
+      <button class="copy-uploaded-url-btn" style="
+        padding: 6px 12px; background: #48bb78; color: white; border: none;
+        border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap;
+      ">复制</button>
+    </div>
+  `;
+
+  // 插入到卡片的操作按钮区域下方
+  const actionsDiv = card.querySelector('.card-actions');
+  if (actionsDiv && actionsDiv.parentNode) {
+    actionsDiv.parentNode.insertBefore(urlDiv, actionsDiv.nextSibling);
+  }
+
+  // 绑定复制按钮事件
+  const copyBtn = urlDiv.querySelector('.copy-uploaded-url-btn');
+  if (copyBtn) {
+    copyBtn.onclick = async (e) => {
+      e.stopPropagation(); // 防止触发卡片点击事件
+      const originalText = copyBtn.textContent;
+      
+      try {
+        await navigator.clipboard.writeText(imageUrl);
+        copyBtn.textContent = "✅ 已复制";
+        copyBtn.style.background = "#22c55e";
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#48bb78";
+        }, 2000);
+      } catch (error) {
+        console.error("复制分享链接失败:", error);
+        copyBtn.textContent = "❌ 失败";
+        copyBtn.style.background = "#f56565";
+        
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+          copyBtn.style.background = "#48bb78";
+        }, 2000);
+      }
+    };
+  }
+}
+
 // 上传图片到相册
 async function uploadImageToAlbum(item) {
   const uploadBtn = event.target;
@@ -733,6 +807,8 @@ async function uploadImageToAlbum(item) {
 
     if (result.success) {
       showNotification("图片已上传到相册！", "success");
+      // 显示上传后的图片URL
+      showUploadedImageUrl(result.imageUrl, uploadBtn);
     } else {
       const errorMsg = formatErrorMessage(result.error || '上传失败');
       throw new Error(errorMsg);

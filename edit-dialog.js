@@ -87,6 +87,7 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
           }
           
           showUploadStatus('图片上传成功！', 'success');
+          showUploadedImageUrlInDialog(result.imageUrl);
         } else {
           throw new Error(result.error || '上传失败');
         }
@@ -238,6 +239,73 @@ ${JSON.stringify(debugData.response, null, 2)}
   function hideUploadStatus() {
     if (uploadStatus) {
       uploadStatus.style.display = 'none';
+    }
+  }
+
+  // 显示上传后的图片URL（编辑对话框中）
+  function showUploadedImageUrlInDialog(imageUrl) {
+    // 移除已有的URL显示区域
+    const existingUrlDiv = document.getElementById('editDialogUploadedUrl');
+    if (existingUrlDiv) {
+      existingUrlDiv.remove();
+    }
+
+    // 创建URL显示区域
+    const urlDiv = document.createElement('div');
+    urlDiv.id = 'editDialogUploadedUrl';
+    urlDiv.style.cssText = `
+      margin-top: 12px; padding: 12px; background: #f0fff4; border: 1px solid #9ae6b4;
+      border-radius: 8px; font-size: 13px; word-break: break-all;
+    `;
+
+    urlDiv.innerHTML = `
+      <div style="color: #2f855a; margin-bottom: 8px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+        <span>🔗</span>
+        <span>图片链接</span>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="text" value="${imageUrl}" readonly style="
+          flex: 1; padding: 6px 8px; border: 1px solid #9ae6b4; border-radius: 4px;
+          background: white; font-size: 12px; color: #374151;
+        ">
+        <button class="copy-dialog-url-btn" style="
+          padding: 6px 12px; background: #48bb78; color: white; border: none;
+          border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap;
+        ">复制</button>
+      </div>
+    `;
+
+    // 插入到上传状态下方
+    if (uploadStatus && uploadStatus.parentNode) {
+      uploadStatus.parentNode.insertBefore(urlDiv, uploadStatus.nextSibling);
+    }
+
+    // 绑定复制按钮事件
+    const copyBtn = urlDiv.querySelector('.copy-dialog-url-btn');
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const originalText = copyBtn.textContent;
+        
+        try {
+          await navigator.clipboard.writeText(imageUrl);
+          copyBtn.textContent = "✅ 已复制";
+          copyBtn.style.background = "#22c55e";
+          
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.style.background = "#48bb78";
+          }, 2000);
+        } catch (error) {
+          console.error("复制图片链接失败:", error);
+          copyBtn.textContent = "❌ 失败";
+          copyBtn.style.background = "#f56565";
+          
+          setTimeout(() => {
+            copyBtn.textContent = originalText;
+            copyBtn.style.background = "#48bb78";
+          }, 2000);
+        }
+      };
     }
   }
 }
