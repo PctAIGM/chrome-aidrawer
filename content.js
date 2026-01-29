@@ -253,7 +253,7 @@ function createModal({ title, content, prompt, buttons, debugData }) {
   const modal = document.createElement("div");
   modal.style.cssText = `
     background: white; padding: 24px; border-radius: 16px;
-    max-width: 90vw; width: 100%; max-height: 90vh; 
+    max-width: 600px; width: 90%; max-height: 90vh; 
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     position: relative; text-align: center; display: flex; flex-direction: column;
     overflow: hidden;
