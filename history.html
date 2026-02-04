@@ -25,6 +25,11 @@
             <main>
                 <div class="toolbar">
                     <div class="search-box">
+                        <select id="operationTypeFilter" class="filter-select">
+                            <option value="all">全部类型</option>
+                            <option value="generate">🎨 生成</option>
+                            <option value="edit">✏️ 改图</option>
+                        </select>
                         <input
                             type="text"
                             id="searchInput"
@@ -47,6 +52,14 @@
                             disabled
                         >
                             导出选中 (0)
+                        </button>
+                        <button
+                            id="shareSelectedBtn"
+                            class="btn secondary"
+                            disabled
+                            style="display: none;"
+                        >
+                            分享选中 (0)
                         </button>
                         <button id="clearAllBtn" class="btn danger">
                             清空全部

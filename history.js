@@ -1,10 +1,10 @@
 // AI画图助手 - 历史记录页面脚本
-import { 
-  formatErrorMessage, 
-  showNotification, 
-  escapeHtml, 
-  truncateText, 
-  formatDate 
+import {
+  formatErrorMessage,
+  showNotification,
+  escapeHtml,
+  truncateText,
+  formatDate
 } from './lib/common.js';
 import {
   copyImageToClipboard,
@@ -34,7 +34,7 @@ function debugTrigger404Handling() {
   console.log('🔧 手动触发404处理测试');
   const allImages = document.querySelectorAll('img[data-error-type]');
   console.log('找到图片数量:', allImages.length);
-  
+
   allImages.forEach((img, index) => {
     console.log(`测试图片 ${index + 1}:`, img.src, img.dataset.errorType);
     // 模拟404错误
@@ -47,7 +47,7 @@ function debugCheckImageStatus() {
   console.log('🔧 检查页面中所有图片的状态');
   const allImages = document.querySelectorAll('img[data-error-type]');
   console.log('找到图片数量:', allImages.length);
-  
+
   allImages.forEach((img, index) => {
     console.log(`图片 ${index + 1}:`, {
       src: img.src,
@@ -58,7 +58,7 @@ function debugCheckImageStatus() {
       failed: img.complete && img.naturalWidth === 0,
       visible: img.style.display !== 'none'
     });
-    
+
     // 如果图片加载失败，自动触发处理
     if (img.complete && img.naturalWidth === 0 && img.style.display !== 'none') {
       console.log(`自动处理失败的图片 ${index + 1}`);
@@ -71,7 +71,7 @@ function debugCheckImageStatus() {
 // 设置图片错误监听器，用于检测动态添加的图片
 function setupImageErrorObserver() {
   const observer = createImageErrorObserver();
-  
+
   // 开始观察
   observer.observe(document.body, {
     childList: true,
@@ -288,11 +288,18 @@ function createHistoryCard(item, allowNSFW) {
 }
 
 function updateExportButton() {
+  const count = selectedItems.size;
+
   const exportBtn = document.getElementById("exportSelectedBtn");
   if (exportBtn) {
-    const count = selectedItems.size;
     exportBtn.textContent = `导出选中 (${count})`;
     exportBtn.disabled = count === 0;
+  }
+
+  const shareBtn = document.getElementById("shareSelectedBtn");
+  if (shareBtn) {
+    shareBtn.textContent = `分享选中 (${count})`;
+    shareBtn.disabled = count === 0;
   }
 }
 
@@ -430,6 +437,75 @@ async function exportSelectedImages() {
     exportBtn.textContent = originalText;
     updateExportButton();
   }
+}
+
+// 批量分享选中的图片
+async function shareSelectedImages() {
+  if (selectedItems.size === 0) {
+    showNotification("请先选择要分享的图片", "error");
+    return;
+  }
+
+  const shareBtn = document.getElementById("shareSelectedBtn");
+  const originalText = shareBtn.textContent;
+  shareBtn.disabled = true;
+  shareBtn.textContent = "分享中...";
+
+  let successCount = 0;
+  let failCount = 0;
+  const uploadedUrls = [];
+
+  // 获取选中的图片数据
+  const selectedImages = filteredData.filter((item) =>
+    selectedItems.has(item.id)
+  );
+
+  for (let i = 0; i < selectedImages.length; i++) {
+    const item = selectedImages[i];
+    shareBtn.textContent = `分享中 (${i + 1}/${selectedImages.length})`;
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        action: 'uploadImageToAlbum',
+        imageUrl: item.imageUrl,
+        prompt: item.prompt
+      });
+
+      if (result.success) {
+        successCount++;
+        uploadedUrls.push(result.imageUrl);
+      } else {
+        failCount++;
+        console.error(`分享图片失败 (${item.id}):`, result.error);
+      }
+    } catch (error) {
+      failCount++;
+      console.error(`分享图片失败 (${item.id}):`, error);
+    }
+  }
+
+  // 显示结果通知
+  if (successCount > 0 && failCount === 0) {
+    showNotification(`成功分享 ${successCount} 张图片到相册`, "success");
+  } else if (successCount > 0 && failCount > 0) {
+    showNotification(`分享完成：成功 ${successCount} 张，失败 ${failCount} 张`, "success");
+  } else {
+    showNotification("分享失败，请检查上传服务配置", "error");
+  }
+
+  // 如果有成功上传的图片，复制链接到剪贴板
+  if (uploadedUrls.length > 0) {
+    try {
+      await navigator.clipboard.writeText(uploadedUrls.join("\n"));
+      showNotification(`已复制 ${uploadedUrls.length} 个链接到剪贴板`, "success");
+    } catch (e) {
+      console.warn("复制链接失败:", e);
+    }
+  }
+
+  shareBtn.disabled = selectedItems.size === 0;
+  shareBtn.textContent = originalText;
+  updateExportButton();
 }
 
 function openModal(item) {
@@ -611,15 +687,27 @@ async function clearAllHistory() {
   }
 }
 
-function searchHistory(query) {
-  if (!query.trim()) {
-    filteredData = [...historyData];
-  } else {
+function searchHistory(query, operationType = "all") {
+  let result = [...historyData];
+
+  // 按提示词搜索
+  if (query && query.trim()) {
     const lowerQuery = query.toLowerCase();
-    filteredData = historyData.filter((item) =>
+    result = result.filter((item) =>
       item.prompt.toLowerCase().includes(lowerQuery),
     );
   }
+
+  // 按操作类型过滤
+  if (operationType !== "all") {
+    if (operationType === "edit") {
+      result = result.filter((item) => item.operationType === "edit");
+    } else if (operationType === "generate") {
+      result = result.filter((item) => item.operationType !== "edit");
+    }
+  }
+
+  filteredData = result;
   selectedItems.clear();
   renderGallery();
 }
@@ -636,7 +724,8 @@ function setupEventListeners() {
   if (searchBtn) {
     searchBtn.addEventListener("click", () => {
       const query = document.getElementById("searchInput").value;
-      searchHistory(query);
+      const operationType = document.getElementById("operationTypeFilter").value;
+      searchHistory(query, operationType);
     });
   }
 
@@ -645,8 +734,18 @@ function setupEventListeners() {
     searchInput.addEventListener("keyup", (e) => {
       if (e.key === "Enter") {
         const query = searchInput.value;
-        searchHistory(query);
+        const operationType = document.getElementById("operationTypeFilter").value;
+        searchHistory(query, operationType);
       }
+    });
+  }
+
+  // 操作类型过滤器
+  const operationTypeFilter = document.getElementById("operationTypeFilter");
+  if (operationTypeFilter) {
+    operationTypeFilter.addEventListener("change", (e) => {
+      const query = document.getElementById("searchInput").value;
+      searchHistory(query, e.target.value);
     });
   }
 
@@ -681,6 +780,12 @@ function setupEventListeners() {
     exportBtn.addEventListener("click", exportSelectedImages);
   }
 
+  // 批量分享按钮
+  const shareSelectedBtn = document.getElementById("shareSelectedBtn");
+  if (shareSelectedBtn) {
+    shareSelectedBtn.addEventListener("click", shareSelectedImages);
+  }
+
   // NSFW开关
   const nsfwToggle = document.getElementById("nsfwToggle");
   if (nsfwToggle) {
@@ -690,6 +795,7 @@ function setupEventListeners() {
     });
   }
 }
+
 
 // fetchBlobWithFallback, handleImageError, retryLoadImage 已移至 lib/image-utils.js
 
@@ -710,6 +816,12 @@ async function checkUploadServiceAndShowButtons() {
     const modalUploadBtn = document.getElementById("modalUploadBtn");
     if (modalUploadBtn) {
       modalUploadBtn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
+    }
+
+    // 显示或隐藏批量分享按钮
+    const shareSelectedBtn = document.getElementById("shareSelectedBtn");
+    if (shareSelectedBtn) {
+      shareSelectedBtn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
     }
   } catch (error) {
     console.error("检查上传服务失败:", error);
@@ -766,12 +878,12 @@ function showUploadedImageUrl(imageUrl, uploadBtn) {
     copyBtn.onclick = async (e) => {
       e.stopPropagation(); // 防止触发卡片点击事件
       const originalText = copyBtn.textContent;
-      
+
       try {
         await navigator.clipboard.writeText(imageUrl);
         copyBtn.textContent = "✅ 已复制";
         copyBtn.style.background = "#22c55e";
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#48bb78";
@@ -780,7 +892,7 @@ function showUploadedImageUrl(imageUrl, uploadBtn) {
         console.error("复制分享链接失败:", error);
         copyBtn.textContent = "❌ 失败";
         copyBtn.style.background = "#f56565";
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#48bb78";
@@ -831,10 +943,10 @@ async function initializeNSFWSetting() {
   try {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
     const globalAllowNSFW = !!response.allowNSFW;
-    
+
     // 重置本地设置为null，表示使用全局设置
     localNSFWSetting = null;
-    
+
     // 更新开关状态为全局设置值
     const nsfwToggle = document.getElementById("nsfwToggle");
     if (nsfwToggle) {
@@ -856,7 +968,7 @@ window.debugTrigger404Handling = debugTrigger404Handling;
 window.debugCheckImageStatus = debugCheckImageStatus;
 
 // 简单的测试函数
-window.testDebugFunctions = function() {
+window.testDebugFunctions = function () {
   console.log('🧪 测试调试函数是否可用');
   console.log('debugTrigger404Handling:', typeof debugTrigger404Handling);
   console.log('debugCheckImageStatus:', typeof debugCheckImageStatus);

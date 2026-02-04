@@ -54,7 +54,14 @@ header h1 {
     display: flex;
     gap: 8px;
     flex: 1;
-    max-width: 400px;
+    max-width: 500px;
+    align-items: center;
+}
+
+/* 搜索框区域的选择器样式 */
+.search-box .filter-select {
+    flex-shrink: 0;
+    min-width: 110px;
 }
 
 /* 搜索框样式 */
@@ -138,6 +145,31 @@ header h1 {
 .nsfw-toggle-label input[type="checkbox"]:checked + span {
     color: #dc3545;
     font-weight: 500;
+}
+
+/* 操作类型过滤器样式 */
+.filter-select {
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #333;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+}
+
+.filter-select:hover {
+    border-color: #ced4da;
+}
+
+.filter-select:focus {
+    border-color: #4a90d9;
+}
+
+.filter-select:active {
+    border-color: #4a90d9;
 }
 
 .gallery {

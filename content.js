@@ -2,8 +2,6 @@
 // 动态导入公共模块
 let formatErrorMessage, fileToBase64, blobToBase64;
 
-console.log("Content script loaded and initializing...");
-
 (async () => {
   try {
     const common = await import(chrome.runtime.getURL('lib/common.js'));
