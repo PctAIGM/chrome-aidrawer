@@ -15,6 +15,8 @@ const defaultSettings = {
   imageUploadServices: [], // 上传服务列表
   // 服务商模板配置
   providerTemplates: [], // 模板列表
+  // 历史记录密码保护
+  historyPasswordHash: "", // 密码的SHA-256哈希值，空字符串表示未设置
 };
 
 // 内置模板
@@ -110,6 +112,9 @@ function applySettingsToUI(settings) {
   if (securityKeyInput) {
     securityKeyInput.value = settings.securityKey || "";
   }
+
+  // 历史记录密码状态回显
+  updatePasswordStatusUI(settings.historyPasswordHash || "");
 
   // 图片上传服务配置回显
   const uploadServices = settings.imageUploadServices || [];
@@ -374,6 +379,18 @@ function setupEventListeners() {
   if (saveUploadServiceBtn) saveUploadServiceBtn.addEventListener("click", saveUploadService);
   if (cancelUploadServiceBtn) cancelUploadServiceBtn.addEventListener("click", hideUploadServiceForm);
   if (addUploadParamBtn) addUploadParamBtn.addEventListener("click", () => addUploadParameterRow());
+
+  // 历史记录密码保护按钮
+  const setPasswordBtn = document.getElementById("setPasswordBtn");
+  const changePasswordBtn = document.getElementById("changePasswordBtn");
+  const clearPasswordBtn = document.getElementById("clearPasswordBtn");
+
+  if (setPasswordBtn) setPasswordBtn.addEventListener("click", setPassword);
+  if (changePasswordBtn) changePasswordBtn.addEventListener("click", changePassword);
+  if (clearPasswordBtn) clearPasswordBtn.addEventListener("click", clearPassword);
+
+  // 密码可见性切换
+  setupPasswordToggle();
 
 
   // Modal 关闭事件
@@ -2466,4 +2483,260 @@ function addTemplateHeaderRow(key = "", value = "") {
   });
 
   container.appendChild(row);
+}
+
+// ==================== 历史记录密码保护功能 ====================
+
+/**
+ * 使用 SHA-256 哈希密码
+ * @param {string} password - 明文密码
+ * @returns {Promise<string>} 密码的 SHA-256 哈希值（十六进制字符串）
+ */
+async function hashPassword(password) {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 验证密码
+ * @param {string} inputPassword - 用户输入的密码
+ * @param {string} storedHash - 存储的哈希值
+ * @returns {Promise<boolean>} 密码是否正确
+ */
+async function verifyPassword(inputPassword, storedHash) {
+  if (!storedHash) return true; // 未设置密码时总是通过
+  const inputHash = await hashPassword(inputPassword);
+  return inputHash === storedHash;
+}
+
+/**
+ * 更新密码状态UI
+ * @param {string} passwordHash - 存储的密码哈希值
+ */
+function updatePasswordStatusUI(passwordHash) {
+  const passwordStatus = document.getElementById("passwordStatus");
+  const newPasswordForm = document.getElementById("newPasswordForm");
+  const changePasswordForm = document.getElementById("changePasswordForm");
+
+  if (passwordHash) {
+    // 已设置密码
+    if (passwordStatus) {
+      passwordStatus.innerHTML = '<span class="status-indicator set">✅ 已设置密码</span>';
+    }
+    if (newPasswordForm) newPasswordForm.style.display = "none";
+    if (changePasswordForm) changePasswordForm.style.display = "block";
+  } else {
+    // 未设置密码
+    if (passwordStatus) {
+      passwordStatus.innerHTML = '<span class="status-indicator not-set">❌ 未设置</span>';
+    }
+    if (newPasswordForm) newPasswordForm.style.display = "block";
+    if (changePasswordForm) changePasswordForm.style.display = "none";
+  }
+}
+
+/**
+ * 设置新密码
+ */
+async function setPassword() {
+  const password = document.getElementById("historyPassword").value;
+  const confirmPassword = document.getElementById("historyPasswordConfirm").value;
+
+  if (!password) {
+    showPasswordMessage("请输入密码", "error");
+    return;
+  }
+
+  if (password.length < 4) {
+    showPasswordMessage("密码长度至少需要4位", "error");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    showPasswordMessage("两次输入的密码不一致", "error");
+    return;
+  }
+
+  try {
+    const passwordHash = await hashPassword(password);
+
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: { ...response, historyPasswordHash: passwordHash },
+    });
+
+    // 清空输入框
+    document.getElementById("historyPassword").value = "";
+    document.getElementById("historyPasswordConfirm").value = "";
+
+    // 更新UI
+    updatePasswordStatusUI(passwordHash);
+
+    showPasswordMessage("密码设置成功！", "success");
+  } catch (error) {
+    console.error("设置密码失败:", error);
+    showPasswordMessage("设置密码失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 修改密码
+ */
+async function changePassword() {
+  const currentPassword = document.getElementById("currentPassword").value;
+  const newPassword = document.getElementById("newHistoryPassword").value;
+  const confirmPassword = document.getElementById("newHistoryPasswordConfirm").value;
+
+  // 验证原密码
+  const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+  const isCurrentPasswordCorrect = await verifyPassword(
+    currentPassword,
+    response.historyPasswordHash || "",
+  );
+
+  if (!isCurrentPasswordCorrect) {
+    showPasswordMessage("原密码错误", "error");
+    return;
+  }
+
+  // 如果新密码为空，则不修改密码
+  if (!newPassword && !confirmPassword) {
+    showPasswordMessage("密码未修改", "info");
+    return;
+  }
+
+  if (newPassword && newPassword.length < 4) {
+    showPasswordMessage("新密码长度至少需要4位", "error");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showPasswordMessage("两次输入的新密码不一致", "error");
+    return;
+  }
+
+  try {
+    const newHash = newPassword ? await hashPassword(newPassword) : "";
+
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: { ...response, historyPasswordHash: newHash },
+    });
+
+    // 清空输入框
+    document.getElementById("currentPassword").value = "";
+    document.getElementById("newHistoryPassword").value = "";
+    document.getElementById("newHistoryPasswordConfirm").value = "";
+
+    // 更新UI
+    updatePasswordStatusUI(newHash);
+
+    showPasswordMessage(newHash ? "密码修改成功！" : "密码已清除！", "success");
+  } catch (error) {
+    console.error("修改密码失败:", error);
+    showPasswordMessage("修改密码失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 清除密码
+ */
+async function clearPassword() {
+  if (!confirm("确定要清除密码保护吗？清除后任何人都可以访问历史记录。")) {
+    return;
+  }
+
+  const currentPassword = document.getElementById("currentPassword").value;
+
+  // 验证原密码
+  const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+  const isCurrentPasswordCorrect = await verifyPassword(
+    currentPassword,
+    response.historyPasswordHash || "",
+  );
+
+  if (!isCurrentPasswordCorrect) {
+    showPasswordMessage("原密码错误，无法清除密码", "error");
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: { ...response, historyPasswordHash: "" },
+    });
+
+    // 清空输入框
+    document.getElementById("currentPassword").value = "";
+
+    // 更新UI
+    updatePasswordStatusUI("");
+
+    showPasswordMessage("密码已清除！", "success");
+  } catch (error) {
+    console.error("清除密码失败:", error);
+    showPasswordMessage("清除密码失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 设置密码可见性切换
+ */
+function setupPasswordToggle() {
+  const toggleButtons = document.querySelectorAll(".password-toggle");
+
+  toggleButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling;
+      if (input.type === "password") {
+        input.type = "text";
+        btn.textContent = "🙈";
+      } else {
+        input.type = "password";
+        btn.textContent = "👁️";
+      }
+    });
+  });
+
+  // 添加回车键支持
+  const passwordInputs = document.querySelectorAll(
+    "#historyPassword, #historyPasswordConfirm, #currentPassword, #newHistoryPassword, #newHistoryPasswordConfirm",
+  );
+
+  passwordInputs.forEach((input) => {
+    input.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") {
+        // 根据可见的表单触发相应操作
+        const newPasswordForm = document.getElementById("newPasswordForm");
+        const changePasswordForm = document.getElementById("changePasswordForm");
+
+        if (newPasswordForm && newPasswordForm.style.display !== "none") {
+          setPassword();
+        } else if (changePasswordForm && changePasswordForm.style.display !== "none") {
+          changePassword();
+        }
+      }
+    });
+  });
+}
+
+/**
+ * 显示密码操作消息
+ * @param {string} message - 消息内容
+ * @param {string} type - 消息类型 (success, error, info)
+ */
+function showPasswordMessage(message, type = "info") {
+  const el = document.getElementById("passwordMessage");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "password-message " + type;
+  setTimeout(() => {
+    el.textContent = "";
+    el.className = "password-message";
+  }, 3000);
 }

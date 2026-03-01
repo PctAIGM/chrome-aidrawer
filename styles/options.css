@@ -1014,14 +1014,125 @@ kbd {
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .template-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
     }
-    
+
     .template-actions {
         justify-content: flex-start;
     }
+}
+
+/* ==================== 密码设置样式 ==================== */
+
+/* 密码状态指示器 */
+.password-status {
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+}
+
+.status-indicator {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.status-indicator.set {
+    color: var(--success-color);
+}
+
+.status-indicator.not-set {
+    color: var(--text-secondary);
+}
+
+/* 密码表单 */
+.password-form {
+    margin-top: 16px;
+}
+
+/* 密码输入框包装器 */
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.password-input-wrapper input {
+    width: 100%;
+    padding: 10px 40px 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    transition: var(--transition);
+}
+
+.password-input-wrapper input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.password-input-wrapper input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* 密码可见性切换按钮 */
+.password-toggle {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px;
+    color: var(--text-secondary);
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.password-toggle:hover {
+    color: var(--text-primary);
+}
+
+/* 密码操作按钮区域 */
+.password-form .form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+/* 密码消息 */
+.password-message {
+    margin-top: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    min-height: 20px;
+    transition: var(--transition);
+}
+
+.password-message.success {
+    background: rgba(52, 199, 89, 0.1);
+    color: var(--success-color);
+    border: 1px solid rgba(52, 199, 89, 0.2);
+}
+
+.password-message.error {
+    background: rgba(255, 59, 48, 0.1);
+    color: var(--danger-color);
+    border: 1px solid rgba(255, 59, 48, 0.2);
+}
+
+.password-message.info {
+    background: rgba(0, 122, 255, 0.1);
+    color: var(--accent-color);
+    border: 1px solid rgba(0, 122, 255, 0.2);
 }

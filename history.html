@@ -111,6 +111,30 @@
             </div>
         </div>
 
+        <!-- 密码验证模态框 -->
+        <div id="passwordModal" class="password-modal" style="display: none;">
+            <div class="password-modal-content">
+                <div class="password-modal-icon">🔒</div>
+                <h2 class="password-modal-title">需要密码验证</h2>
+                <p class="password-modal-subtitle">请输入密码以访问历史记录</p>
+                <div class="password-input-wrapper">
+                    <input
+                        type="password"
+                        id="verifyPasswordInput"
+                        placeholder="输入密码"
+                        autofocus
+                    />
+                    <button type="button" class="password-toggle" id="verifyPasswordToggle">
+                        👁️
+                    </button>
+                </div>
+                <div id="verifyPasswordMessage" class="password-message"></div>
+                <button id="verifyPasswordBtn" class="btn primary big">
+                    解锁
+                </button>
+            </div>
+        </div>
+
         <script src="lib/jszip.min.js"></script>
         <script type="module" src="history.js"></script>
     </body>

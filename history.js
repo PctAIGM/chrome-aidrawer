@@ -20,12 +20,220 @@ let historyData = [];
 let filteredData = [];
 let selectedItems = new Set();
 let localNSFWSetting = null; // 本地NSFW设置，null表示使用全局设置
+let isPasswordVerified = false; // 密码是否已验证
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadHistory();
-  setupEventListeners();
-  setupImageErrorObserver();
+  checkPasswordProtection().then((needsPassword) => {
+    if (needsPassword) {
+      showPasswordModal();
+    } else {
+      loadHistory();
+      setupEventListeners();
+      setupImageErrorObserver();
+    }
+  });
 });
+
+// ==================== 密码保护功能 ====================
+
+/**
+ * 使用 SHA-256 哈希密码
+ * @param {string} password - 明文密码
+ * @returns {Promise<string>} 密码的 SHA-256 哈希值（十六进制字符串）
+ */
+async function hashPassword(password) {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 验证密码
+ * @param {string} inputPassword - 用户输入的密码
+ * @param {string} storedHash - 存储的哈希值
+ * @returns {Promise<boolean>} 密码是否正确
+ */
+async function verifyPassword(inputPassword, storedHash) {
+  if (!storedHash) return true; // 未设置密码时总是通过
+  const inputHash = await hashPassword(inputPassword);
+  return inputHash === storedHash;
+}
+
+/**
+ * 检查是否需要密码验证
+ * @returns {Promise<boolean>} 是否需要密码验证
+ */
+async function checkPasswordProtection() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const passwordHash = response.historyPasswordHash || "";
+    return !!passwordHash;
+  } catch (error) {
+    console.error("检查密码保护状态失败:", error);
+    return false;
+  }
+}
+
+/**
+ * 显示密码验证模态框
+ */
+function showPasswordModal() {
+  const modal = document.getElementById("passwordModal");
+  const container = document.querySelector(".container");
+
+  if (modal) {
+    modal.style.display = "flex";
+    if (container) container.style.display = "none";
+  }
+
+  // 设置密码验证模态框的事件监听器
+  setupPasswordModalEventListeners();
+}
+
+/**
+ * 设置密码验证模态框的事件监听器
+ */
+function setupPasswordModalEventListeners() {
+  // 移除旧的事件监听器（通过克隆元素的方式）
+  const oldVerifyPasswordBtn = document.getElementById("verifyPasswordBtn");
+  const oldVerifyPasswordInput = document.getElementById("verifyPasswordInput");
+  const oldVerifyPasswordToggle = document.getElementById("verifyPasswordToggle");
+
+  // 保存当前输入值（如果有的话）
+  const savedInputValue = oldVerifyPasswordInput ? oldVerifyPasswordInput.value : "";
+
+  if (oldVerifyPasswordBtn) {
+    const newBtn = oldVerifyPasswordBtn.cloneNode(true);
+    oldVerifyPasswordBtn.parentNode.replaceChild(newBtn, oldVerifyPasswordBtn);
+  }
+  if (oldVerifyPasswordInput) {
+    const newInput = oldVerifyPasswordInput.cloneNode(true);
+    oldVerifyPasswordInput.parentNode.replaceChild(newInput, oldVerifyPasswordInput);
+  }
+  if (oldVerifyPasswordToggle) {
+    const newToggle = oldVerifyPasswordToggle.cloneNode(true);
+    oldVerifyPasswordToggle.parentNode.replaceChild(newToggle, oldVerifyPasswordToggle);
+  }
+
+  // 重新获取元素引用
+  const verifyPasswordBtn = document.getElementById("verifyPasswordBtn");
+  const verifyPasswordInput = document.getElementById("verifyPasswordInput");
+  const verifyPasswordToggle = document.getElementById("verifyPasswordToggle");
+
+  // 恢复输入值
+  if (verifyPasswordInput && savedInputValue) {
+    verifyPasswordInput.value = savedInputValue;
+  }
+
+  // 解锁按钮事件
+  if (verifyPasswordBtn) {
+    verifyPasswordBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      verifyPasswordAndUnlock();
+    });
+  }
+
+  // 回车键事件
+  if (verifyPasswordInput) {
+    verifyPasswordInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        verifyPasswordAndUnlock();
+      }
+    });
+  }
+
+  // 密码可见性切换事件
+  if (verifyPasswordToggle) {
+    verifyPasswordToggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (verifyPasswordInput) {
+        if (verifyPasswordInput.type === "password") {
+          verifyPasswordInput.type = "text";
+          verifyPasswordToggle.textContent = "🙈";
+        } else {
+          verifyPasswordInput.type = "password";
+          verifyPasswordToggle.textContent = "👁️";
+        }
+      }
+    });
+  }
+
+  // 聚焦到密码输入框
+  if (verifyPasswordInput) {
+    // 使用 setTimeout 确保在 DOM 更新后聚焦
+    setTimeout(() => {
+      verifyPasswordInput.focus();
+    }, 0);
+  }
+}
+
+/**
+ * 隐藏密码验证模态框
+ */
+function hidePasswordModal() {
+  const modal = document.getElementById("passwordModal");
+  const container = document.querySelector(".container");
+
+  if (modal) {
+    modal.style.display = "none";
+  }
+}
+
+/**
+ * 验证密码并解锁
+ */
+async function verifyPasswordAndUnlock() {
+  const passwordInput = document.getElementById("verifyPasswordInput");
+  const password = passwordInput ? passwordInput.value : "";
+
+  if (!password) {
+    showVerifyPasswordMessage("请输入密码", "error");
+    return;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const passwordHash = response.historyPasswordHash || "";
+    const isCorrect = await verifyPassword(password, passwordHash);
+
+    if (isCorrect) {
+      isPasswordVerified = true;
+      hidePasswordModal();
+      const container = document.querySelector(".container");
+      if (container) container.style.display = "block";
+
+      // 加载历史记录
+      loadHistory();
+      setupEventListeners();
+      setupImageErrorObserver();
+
+      showVerifyPasswordMessage("", "");
+    } else {
+      showVerifyPasswordMessage("密码错误，请重试", "error");
+      passwordInput.value = "";
+      passwordInput.focus();
+    }
+  } catch (error) {
+    console.error("密码验证失败:", error);
+    showVerifyPasswordMessage("验证失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 显示密码验证消息
+ * @param {string} message - 消息内容
+ * @param {string} type - 消息类型 (success, error, info)
+ */
+function showVerifyPasswordMessage(message, type = "info") {
+  const el = document.getElementById("verifyPasswordMessage");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "password-message " + type;
+}
 
 
 
@@ -794,6 +1002,8 @@ function setupEventListeners() {
       renderGallery();
     });
   }
+
+  // 注意：密码验证模态框的事件监听器在 setupPasswordModalEventListeners() 中设置
 }
 
 

@@ -759,3 +759,115 @@ header h1 {
         font-size: 10px;
     }
 }
+
+/* ==================== 密码验证模态框样式 ==================== */
+
+.password-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.password-modal-content {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.password-modal-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.password-modal-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.password-modal-subtitle {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 24px;
+}
+
+/* 密码输入框样式 */
+.password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.password-input-wrapper input {
+    flex: 1;
+    padding: 12px 48px 12px 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.2s;
+}
+
+.password-input-wrapper input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 20px;
+    padding: 4px;
+    color: #666;
+    transition: color 0.2s;
+}
+
+.password-toggle:hover {
+    color: #333;
+}
+
+/* 密码消息样式 */
+.password-message {
+    margin-bottom: 16px;
+    min-height: 20px;
+    font-size: 14px;
+}
+
+.password-message.success {
+    color: #48bb78;
+}
+
+.password-message.error {
+    color: #f56565;
+}
+
+.password-message.info {
+    color: #667eea;
+}

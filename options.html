@@ -298,6 +298,113 @@
                                 </label>
                             </div>
                         </div>
+
+                        <!-- 历史记录密码保护 -->
+                        <div class="card settings-card">
+                            <h2>🔒 历史记录密码保护</h2>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label>密码状态</label>
+                                    <div id="passwordStatus" class="password-status">
+                                        <span class="status-indicator">❌ 未设置</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 未设置密码时的表单 -->
+                            <div id="newPasswordForm" class="password-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="historyPassword">设置密码</label>
+                                        <div class="password-input-wrapper">
+                                            <input
+                                                type="password"
+                                                id="historyPassword"
+                                                placeholder="输入保护密码"
+                                            />
+                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                                👁️
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="historyPasswordConfirm">确认密码</label>
+                                        <div class="password-input-wrapper">
+                                            <input
+                                                type="password"
+                                                id="historyPasswordConfirm"
+                                                placeholder="再次输入密码"
+                                            />
+                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                                👁️
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="setPasswordBtn" class="btn primary small">
+                                        🔐 设置密码
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 已设置密码时的表单 -->
+                            <div id="changePasswordForm" class="password-form" style="display: none;">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="currentPassword">原密码</label>
+                                        <div class="password-input-wrapper">
+                                            <input
+                                                type="password"
+                                                id="currentPassword"
+                                                placeholder="输入当前密码"
+                                            />
+                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                                👁️
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="newHistoryPassword">新密码</label>
+                                        <div class="password-input-wrapper">
+                                            <input
+                                                type="password"
+                                                id="newHistoryPassword"
+                                                placeholder="输入新密码（留空则不修改）"
+                                            />
+                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                                👁️
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="newHistoryPasswordConfirm">确认新密码</label>
+                                        <div class="password-input-wrapper">
+                                            <input
+                                                type="password"
+                                                id="newHistoryPasswordConfirm"
+                                                placeholder="再次输入新密码"
+                                            />
+                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                                👁️
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-actions">
+                                    <button id="changePasswordBtn" class="btn primary small">
+                                        🔑 修改密码
+                                    </button>
+                                    <button id="clearPasswordBtn" class="btn danger small">
+                                        🗑️ 清除密码
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="passwordMessage" class="password-message"></div>
+                        </div>
                     </section>
 
                     <!-- 图片上传标签页 -->
