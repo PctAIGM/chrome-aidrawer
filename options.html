@@ -1,1001 +1,811 @@
 <!doctype html>
 <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>AI画图助手 - API设置</title>
-        <link rel="stylesheet" href="styles/common.css" />
-        <link rel="stylesheet" href="styles/options.css" />
-    </head>
 
-    <body>
-        <div class="container">
-            <header>
-                <h1>🎨 AI画图助手</h1>
-                <p>API 配置</p>
-            </header>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI画图助手 - API设置</title>
+    <link rel="stylesheet" href="styles/common.css" />
+    <link rel="stylesheet" href="styles/options.css" />
+</head>
 
-            <div class="main-layout">
-                <!-- 侧边菜单 -->
-                <aside class="sidebar">
-                    <nav class="nav-menu">
-                        <button class="nav-item active" data-tab="providers">
-                            <span class="nav-icon">🤖</span>
-                            <span>服务商配置</span>
-                        </button>
-                        <button class="nav-item" data-tab="global">
-                            <span class="nav-icon">⚙️</span>
-                            <span>全局配置</span>
-                        </button>
-                        <button class="nav-item" data-tab="upload">
-                            <span class="nav-icon">📤</span>
-                            <span>图片上传</span>
-                        </button>
-                        <button class="nav-item" data-tab="backup">
-                            <span class="nav-icon">💾</span>
-                            <span>备份</span>
-                        </button>
-                    </nav>
-                </aside>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 AI画图助手</h1>
+            <p>API 配置</p>
+        </header>
 
-                <!-- 内容区域 -->
-                <main class="content-area">
-                    <!-- 服务商配置标签页 -->
-                    <section id="tab-providers" class="tab-content active">
-                        <!-- 服务商管理 -->
-                        <div class="section-providers">
-                            <div class="section-header">
-                                <h2>🤖 AI 服务商</h2>
-                                <button
-                                    id="addProviderBtn"
-                                    class="btn primary small round"
-                                >
-                                    <span class="icon">➕</span> 添加
-                                </button>
-                            </div>
-                            <div id="providersList" class="providers-list">
-                                <!-- 服务商列表将通过JS动态生成 -->
-                            </div>
+        <div class="main-layout">
+            <!-- 侧边菜单 -->
+            <aside class="sidebar">
+                <nav class="nav-menu">
+                    <button class="nav-item active" data-tab="providers">
+                        <span class="nav-icon">🤖</span>
+                        <span>服务商配置</span>
+                    </button>
+                    <button class="nav-item" data-tab="global">
+                        <span class="nav-icon">⚙️</span>
+                        <span>全局配置</span>
+                    </button>
+                    <button class="nav-item" data-tab="upload">
+                        <span class="nav-icon">📤</span>
+                        <span>图片上传</span>
+                    </button>
+                    <button class="nav-item" data-tab="backup">
+                        <span class="nav-icon">💾</span>
+                        <span>备份</span>
+                    </button>
+                </nav>
+            </aside>
 
-                            <div id="noProvidersMessage" class="no-providers-message">
-                                <p>暂无服务商配置</p>
-                                <p>点击右上角 "添加" 按钮配置第一个服务商</p>
-                            </div>
-                        </div>
-
-                        <!-- 添加/编辑服务商表单 -->
-                        <div
-                            id="providerFormSection"
-                            class="card form-card"
-                            style="display: none"
-                        >
-                            <h2 id="formTitle">添加服务商</h2>
-                            <div class="form-grid">
-                                <div class="form-group full-width">
-                                    <label for="providerTemplate">服务商模板</label>
-                                    <div class="template-row">
-                                        <select id="providerTemplate">
-                                            <option value="">选择模板（可选）</option>
-                                            <!-- 模板选项将通过JS动态加载 -->
-                                        </select>
-                                        <button type="button" id="manageTemplatesBtn" class="btn secondary small">管理模板</button>
-                                    </div>
-                                    <span class="hint">选择模板可快速填充常用配置</span>
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label for="providerName">服务商名称</label>
-                                    <input
-                                        type="text"
-                                        id="providerName"
-                                        placeholder="例如: OpenAI, 我的API"
-                                    />
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label>服务类型</label>
-                                    <div class="radio-group">
-                                        <label class="radio-label">
-                                            <input
-                                                type="radio"
-                                                name="serviceType"
-                                                value="generate"
-                                                checked
-                                            />
-                                            <span>🎨 画图</span>
-                                        </label>
-                                        <label class="radio-label">
-                                            <input
-                                                type="radio"
-                                                name="serviceType"
-                                                value="edit"
-                                            />
-                                            <span>✏️ 改图</span>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <!-- 改图模式配置 -->
-                                <div id="editModeConfig" class="form-group full-width" style="display: none;">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="providerUseMultipart" />
-                                        <span>📤 使用 multipart/form-data 格式上传图片</span>
-                                    </label>
-                                    <div id="multipartConfig" class="form-row" style="margin-top: 8px; display: none;">
-                                        <div class="form-group">
-                                            <label for="providerImageFieldName">图片字段名</label>
-                                            <input
-                                                type="text"
-                                                id="providerImageFieldName"
-                                                placeholder="image"
-                                                value="image"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label for="providerEndpoint">API Endpoint</label>
-                                    <input
-                                        type="text"
-                                        id="providerEndpoint"
-                                        placeholder="https://api.example.com/v1/images/generations"
-                                    />
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label for="providerKey">API Key</label>
-                                    <input
-                                        type="password"
-                                        id="providerKey"
-                                        placeholder="sk-..."
-                                    />
-                                </div>
-
-                                <!-- 异步配置: 紧凑版 -->
-                                <div class="form-group full-width">
-                                    <div class="accordion-header">
-                                        <label class="checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                id="providerAsyncMode"
-                                            />
-                                            <span>⏳ 异步模式 (轮询)</span>
-                                        </label>
-                                    </div>
-
-                                    <div
-                                        id="asyncConfigSection"
-                                        class="accordion-content"
-                                        style="display: none"
-                                    >
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label>Job ID Path</label>
-                                                <input
-                                                    type="text"
-                                                    id="providerJobIdPath"
-                                                    placeholder="data.id"
-                                                />
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Poll Interval (s)</label>
-                                                <input
-                                                    type="number"
-                                                    id="providerPollInterval"
-                                                    value="2"
-                                                    min="1"
-                                                    max="10"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Poll URL Template</label>
-                                            <input
-                                                type="text"
-                                                id="providerPollUrl"
-                                                placeholder="https://.../tasks/{id}"
-                                            />
-                                        </div>
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label>Status Path</label>
-                                                <input
-                                                    type="text"
-                                                    id="providerStatusPath"
-                                                    placeholder="status"
-                                                />
-                                            </div>
-                                            <div class="form-group">
-                                                <label>Success Value</label>
-                                                <input
-                                                    type="text"
-                                                    id="providerSuccessValue"
-                                                    placeholder="SUCCEEDED"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label>Response Path (Optional)</label>
-                                    <input
-                                        type="text"
-                                        id="providerResponsePath"
-                                        placeholder="data[0].url"
-                                    />
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label>Headers</label>
-                                    <div
-                                        id="customHeadersList"
-                                        class="custom-params-list"
-                                    ></div>
-                                    <button
-                                        id="addHeaderBtn"
-                                        class="btn text-btn small"
-                                    >
-                                        + Add Header
-                                    </button>
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label>Body Params</label>
-                                    <div
-                                        id="customParamsList"
-                                        class="custom-params-list"
-                                    ></div>
-                                    <button id="addParamBtn" class="btn text-btn small">
-                                        + Add Param
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="form-actions right">
-                                <button id="cancelProviderBtn" class="btn text-btn">
-                                    取消
-                                </button>
-                                <button id="saveProviderBtn" class="btn primary">
-                                    保存
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- 全局配置标签页 -->
-                    <section id="tab-global" class="tab-content">
-                        <!-- 全局设置 -->
-                        <div class="card settings-card">
-                            <h2>⚙️ 全局设置</h2>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="maxHistory">历史记录数量</label>
-                                    <input type="number" id="maxHistory" value="100" />
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="imagesPerRow">每行图片数</label>
-                                    <input type="number" id="imagesPerRow" value="4" />
-                                </div>
-                            </div>
-                            <div class="form-row checkbox-row">
-                                <label class="checkbox-label">
-                                    <input
-                                        type="checkbox"
-                                        id="useNotifications"
-                                        checked
-                                    />
-                                    <span>启用桌面通知</span>
-                                </label>
-                            </div>
-                            <div class="form-row checkbox-row">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="allowNSFW" />
-                                    <span>🔞 允许敏感内容</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- 历史记录密码保护 -->
-                        <div class="card settings-card">
-                            <h2>🔒 历史记录密码保护</h2>
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label>密码状态</label>
-                                    <div id="passwordStatus" class="password-status">
-                                        <span class="status-indicator">❌ 未设置</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- 未设置密码时的表单 -->
-                            <div id="newPasswordForm" class="password-form">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="historyPassword">设置密码</label>
-                                        <div class="password-input-wrapper">
-                                            <input
-                                                type="password"
-                                                id="historyPassword"
-                                                placeholder="输入保护密码"
-                                            />
-                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
-                                                👁️
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="historyPasswordConfirm">确认密码</label>
-                                        <div class="password-input-wrapper">
-                                            <input
-                                                type="password"
-                                                id="historyPasswordConfirm"
-                                                placeholder="再次输入密码"
-                                            />
-                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
-                                                👁️
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="form-actions">
-                                    <button id="setPasswordBtn" class="btn primary small">
-                                        🔐 设置密码
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- 已设置密码时的表单 -->
-                            <div id="changePasswordForm" class="password-form" style="display: none;">
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="currentPassword">原密码</label>
-                                        <div class="password-input-wrapper">
-                                            <input
-                                                type="password"
-                                                id="currentPassword"
-                                                placeholder="输入当前密码"
-                                            />
-                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
-                                                👁️
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="newHistoryPassword">新密码</label>
-                                        <div class="password-input-wrapper">
-                                            <input
-                                                type="password"
-                                                id="newHistoryPassword"
-                                                placeholder="输入新密码（留空则不修改）"
-                                            />
-                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
-                                                👁️
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="newHistoryPasswordConfirm">确认新密码</label>
-                                        <div class="password-input-wrapper">
-                                            <input
-                                                type="password"
-                                                id="newHistoryPasswordConfirm"
-                                                placeholder="再次输入新密码"
-                                            />
-                                            <button type="button" class="password-toggle" title="显示/隐藏密码">
-                                                👁️
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="form-actions">
-                                    <button id="changePasswordBtn" class="btn primary small">
-                                        🔑 修改密码
-                                    </button>
-                                    <button id="clearPasswordBtn" class="btn danger small">
-                                        🗑️ 清除密码
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div id="passwordMessage" class="password-message"></div>
-                        </div>
-                    </section>
-
-                    <!-- 图片上传标签页 -->
-                    <section id="tab-upload" class="tab-content">
-                        <!-- 图片上传服务管理 -->
-                        <div class="section-upload-services">
-                            <div class="section-header">
-                                <h2>📤 图片上传服务</h2>
-                                <button
-                                    id="addUploadServiceBtn"
-                                    class="btn primary small round"
-                                >
-                                    <span class="icon">➕</span> 添加
-                                </button>
-                            </div>
-                            <div id="uploadServicesList" class="providers-list">
-                                <!-- 上传服务列表将通过JS动态生成 -->
-                            </div>
-
-                            <div id="noUploadServicesMessage" class="no-providers-message">
-                                <p>暂无上传服务配置</p>
-                                <p>点击右上角 "添加" 按钮配置第一个上传服务</p>
-                            </div>
-                        </div>
-
-                        <!-- 添加/编辑上传服务表单 -->
-                        <div
-                            id="uploadServiceFormSection"
-                            class="card form-card"
-                            style="display: none"
-                        >
-                            <h2 id="uploadFormTitle">添加上传服务</h2>
-                            <div class="form-grid">
-                                <div class="form-group full-width">
-                                    <label for="uploadServiceName">服务名称</label>
-                                    <input
-                                        type="text"
-                                        id="uploadServiceName"
-                                        placeholder="例如: PicGo.net, SM.MS"
-                                    />
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label for="uploadServiceUrl">上传端点</label>
-                                    <input
-                                        type="text"
-                                        id="uploadServiceUrl"
-                                        placeholder="https://www.picgo.net/api/1/upload"
-                                    />
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="uploadServiceKey">API Key (可选)</label>
-                                    <input
-                                        type="password"
-                                        id="uploadServiceKey"
-                                        placeholder="上传服务的API密钥"
-                                    />
-                                </div>
-                                <div class="form-group">
-                                    <label for="uploadServiceAuthType">认证方式</label>
-                                    <select id="uploadServiceAuthType">
-                                        <option value="header">Header (推荐)</option>
-                                        <option value="param">参数</option>
-                                        <option value="bearer">Bearer Token</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="uploadServiceFieldName">文件字段名</label>
-                                    <input
-                                        type="text"
-                                        id="uploadServiceFieldName"
-                                        placeholder="source"
-                                        value="source"
-                                    />
-                                </div>
-                                <div class="form-group">
-                                    <label for="uploadServiceResponsePath">响应路径</label>
-                                    <input
-                                        type="text"
-                                        id="uploadServiceResponsePath"
-                                        placeholder="image.url"
-                                        value="image.url"
-                                    />
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="uploadServiceFormat">响应格式</label>
-                                    <select id="uploadServiceFormat">
-                                        <option value="json">JSON (默认)</option>
-                                        <option value="txt">纯文本URL</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="uploadServiceHeaderName">认证Header名</label>
-                                    <input
-                                        type="text"
-                                        id="uploadServiceHeaderName"
-                                        placeholder="X-API-Key"
-                                        value="X-API-Key"
-                                    />
-                                </div>
-
-                                <div class="form-group full-width">
-                                    <label>自定义参数</label>
-                                    <div id="uploadCustomParamsList" class="custom-params-list"></div>
-                                    <button id="addUploadParamBtn" class="btn text-btn small">
-                                        + 添加参数
-                                    </button>
-                                    <span class="hint">例如: expiration=600 (imgbb图片10分钟后删除)</span>
-                                </div>
-
-
-                            </div>
-
-                            <div class="form-actions right">
-                                <button id="cancelUploadServiceBtn" class="btn text-btn">
-                                    取消
-                                </button>
-                                <button id="saveUploadServiceBtn" class="btn primary">
-                                    保存
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- 使用说明 -->
-                        <div class="card settings-card">
-                            <h2>📖 使用说明</h2>
-                            <div style="color: #4a5568; font-size: 14px; line-height: 1.6;">
-                                <p><strong>什么是图片上传服务？</strong></p>
-                                <p>当改图API无法直接访问网页图片URL时，可以先将图片上传到中转服务获取可访问的URL。</p>
-                                
-                                <p style="margin-top: 16px;"><strong>配置示例：</strong></p>
-                                
-                                <div style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
-                                    端点: https://api.example.com/upload<br>
-                                    认证方式: Bearer Token<br>
-                                    文件字段名: file<br>
-                                    响应路径: data.url<br>
-                                    响应格式: JSON
-                                </div>
-                                
-                                <p style="margin-top: 16px;"><strong>自定义参数说明：</strong></p>
-                                <ul style="margin: 8px 0; padding-left: 20px;">
-                                    <li><strong>expiration</strong> - 图片过期时间（秒），如600表示10分钟后删除</li>
-                                    <li><strong>key</strong> - API密钥（当认证方式为"参数"时使用）</li>
-                                    <li><strong>format</strong> - 响应格式，如json、txt等</li>
-                                    <li><strong>album</strong> - 相册ID（某些服务支持）</li>
-                                    <li><strong>title</strong> - 图片标题</li>
-                                    <li><strong>description</strong> - 图片描述</li>
-                                </ul>
-                                
-                                <p style="margin-top: 16px;"><strong>参数使用场景：</strong></p>
-                                <ul style="margin: 8px 0; padding-left: 20px;">
-                                    <li><strong>通用</strong> - 在所有上传场景中都会使用的参数</li>
-                                    <li><strong>临时上传</strong> - 仅在改图时的临时上传中使用（如expiration参数）</li>
-                                    <li><strong>上传到相册</strong> - 仅在分享图片到相册时使用（如album参数）</li>
-                                </ul>
-                                
-                                <p style="margin-top: 16px;"><strong>使用方法：</strong></p>
-                                <ol style="margin: 8px 0; padding-left: 20px;">
-                                    <li>选择合适的图床服务并获取API密钥</li>
-                                    <li>点击"添加"按钮配置上传服务</li>
-                                    <li>为每个参数选择合适的使用场景</li>
-                                    <li>点击服务卡片激活要使用的服务</li>
-                                    <li>右键选中文字，选择改图服务</li>
-                                    <li>在弹出的对话框中选择本地图片或点击"上传到图床"</li>
-                                    <li>系统会根据使用场景自动选择相应的参数</li>
-                                </ol>
-                                
-                                <p style="margin-top: 16px;"><strong>注意事项：</strong></p>
-                                <ul style="margin: 8px 0; padding-left: 20px;">
-                                    <li>确保上传服务支持跨域请求（CORS）</li>
-                                    <li>上传的图片应该是公开可访问的URL</li>
-                                    <li>建议使用HTTPS协议的上传服务</li>
-                                    <li>注意上传服务的文件大小限制</li>
-                                    <li>激活的服务会显示"ACTIVE"标识</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- 备份标签页 -->
-                    <section id="tab-backup" class="tab-content">
-                        <!-- WebDAV 同步设置 -->
-                        <div class="card settings-card">
-                            <h2>☁️ WebDAV 同步</h2>
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label for="webdavUrl">WebDAV 服务器地址</label>
-                                    <input
-                                        type="text"
-                                        id="webdavUrl"
-                                        placeholder="https://dav.example.com/path/to/folder"
-                                    />
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="webdavUsername">用户名</label>
-                                    <input
-                                        type="text"
-                                        id="webdavUsername"
-                                        placeholder="用户名"
-                                    />
-                                </div>
-                                <div class="form-group">
-                                    <label for="webdavPassword">密码</label>
-                                    <input
-                                        type="password"
-                                        id="webdavPassword"
-                                        placeholder="密码"
-                                    />
-                                </div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label for="webdavFilename">配置文件名</label>
-                                    <input
-                                        type="text"
-                                        id="webdavFilename"
-                                        placeholder="ai-drawer-config.json"
-                                        value="ai-drawer-config.json"
-                                    />
-                                </div>
-                            </div>
-                            <div class="form-row checkbox-row">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="webdavAutoSync" />
-                                    <span>自动同步（保存设置时同时上传）</span>
-                                </label>
-                            </div>
-                            <div class="form-actions" style="margin-top: 12px;">
-                                <button id="webdavTestBtn" class="btn secondary small">
-                                    🔗 测试连接
-                                </button>
-                                <button id="webdavUploadBtn" class="btn secondary small">
-                                    ☁️ 上传配置
-                                </button>
-                                <button id="webdavDownloadBtn" class="btn secondary small">
-                                    📥 下载配置
-                                </button>
-                            </div>
-                            <div id="webdavStatus" class="status" style="margin-top: 8px;"></div>
-                        </div>
-
-                        <!-- 安全密钥 -->
-                        <div class="card settings-card">
-                            <h2>🔐 安全密钥</h2>
-                            <div class="form-row">
-                                <div class="form-group full-width">
-                                    <label for="securityKey">安全密钥</label>
-                                    <input
-                                        type="password"
-                                        id="securityKey"
-                                        placeholder="用于加密/解密配置文件"
-                                    />
-                                    <span class="hint">导出、上传 WebDAV 时会使用此密钥加密配置</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 导出/导入 -->
-                        <div class="card settings-card">
-                            <h2>📦 导出/导入</h2>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>导出配置</label>
-                                    <button
-                                        id="exportSettingsBtn"
-                                        class="btn secondary"
-                                    >
-                                        📤 导出配置
-                                    </button>
-                                    <span class="hint">将当前配置导出为 JSON 文件</span>
-                                </div>
-                                <div class="form-group">
-                                    <label>导入配置</label>
-                                    <button
-                                        id="importSettingsBtn"
-                                        class="btn secondary"
-                                    >
-                                        📥 导入配置
-                                    </button>
-                                    <input
-                                        type="file"
-                                        id="importFile"
-                                        accept=".json"
-                                        style="display: none"
-                                    />
-                                    <span class="hint">从 JSON 文件导入配置</span>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- 底部操作栏 -->
-                    <div class="actions-footer">
-                        <div class="left-actions">
-                            <button id="saveAllBtn" class="btn primary big">
-                                💾 保存设置
-                            </button>
-                        </div>
-                        <div class="right-actions">
-                            <button id="resetBtn" class="btn danger small text-btn">
-                                重置
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- 状态提示 -->
-                    <div id="status" class="status"></div>
-                </main>
-            </div>
-
-            <footer>
-                <p>
-                    💡
-                    提示：配置完成后，选中网页上的文字，右键点击"AI画图助手"选择对应的服务商即可生成图片
-                </p>
-                <p class="shortcut">
-                    快捷键：<kbd id="shortcutDisplay">Ctrl+Shift+D</kbd>
-                    <span id="shortcutHint" style="display: none;">
-                        （
-                        <a href="#" id="shortcutSettingsLink">设置快捷键</a>
-                        ）
-                    </span>
-                    <span id="shortcutDesc">(使用当前激活的服务商)</span>
-                </p>
-            </footer>
-        </div>
-
-        <!-- 上传服务项模板 -->
-        <template id="uploadServiceItemTemplate">
-            <div class="provider-item" draggable="true">
-                <div class="provider-card-header">
-                    <div class="provider-name"></div>
-                    <div class="provider-status-badge" style="display: none">
-                        ACTIVE
-                    </div>
-                </div>
-                <div class="provider-card-body">
-                    <div class="provider-endpoint" title=""></div>
-                </div>
-                <div class="provider-card-footer">
-                    <div class="provider-actions">
-                        <button
-                            class="btn-test small secondary"
-                            title="测试此上传服务"
-                        >
-                            🧪
-                        </button>
-                        <button
-                            class="btn-copy small secondary icon-btn"
-                            title="复制"
-                        >
-                            📋
-                        </button>
-                        <button
-                            class="btn-edit small secondary icon-btn"
-                            title="编辑"
-                        >
-                            ✏️
-                        </button>
-                        <button
-                            class="btn-delete small danger icon-btn"
-                            title="删除"
-                        >
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </template>
-
-        <!-- 服务商项模板 -->
-        <template id="providerItemTemplate">
-            <div class="provider-item" draggable="true">
-                <div class="provider-card-header">
-                    <div class="provider-name"></div>
-                    <div class="provider-status-badge" style="display: none">
-                        ACTIVE
-                    </div>
-                </div>
-                <div class="provider-card-body">
-                    <div class="provider-endpoint" title=""></div>
-                </div>
-                <div class="provider-card-footer">
-                    <div class="provider-actions">
-                        <button
-                            class="btn-test small secondary"
-                            title="测试此服务商"
-                        >
-                            🧪
-                        </button>
-                        <button
-                            class="btn-copy small secondary icon-btn"
-                            title="复制"
-                        >
-                            📋
-                        </button>
-                        <button
-                            class="btn-edit small secondary icon-btn"
-                            title="编辑"
-                        >
-                            ✏️
-                        </button>
-                        <button
-                            class="btn-delete small danger icon-btn"
-                            title="删除"
-                        >
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </template>
-
-        <!-- 参数行模板 -->
-        <template id="paramRowTemplate">
-            <div class="param-row">
-                <input type="text" class="param-key" placeholder="参数名" />
-                <select class="param-type">
-                    <option value="string">string</option>
-                    <option value="int">int</option>
-                    <option value="float">float</option>
-                    <option value="bool">bool</option>
-                    <option value="object">object</option>
-                    <option value="list">list</option>
-                    <option value="random">random</option>
-                </select>
-                <input type="text" class="param-value" placeholder="参数值" />
-                <select class="param-field-type" title="字段类型（可选）">
-                    <option value="">默认</option>
-                    <option value="prompt">提示词</option>
-                    <option value="imageUrl">图片URL</option>
-                </select>
-                <button class="btn-remove-param">❌</button>
-            </div>
-        </template>
-
-        <!-- 消息头行模板 -->
-        <template id="headerRowTemplate">
-            <div class="header-row">
-                <input
-                    type="text"
-                    class="header-key"
-                    placeholder="Header名 (如: Authorization)"
-                />
-                <input
-                    type="text"
-                    class="header-value"
-                    placeholder="Header值"
-                />
-                <button class="btn-remove-header">❌</button>
-            </div>
-        </template>
-
-        <!-- 上传参数行模板 -->
-        <template id="uploadParamRowTemplate">
-            <div class="upload-param-row">
-                <input
-                    type="text"
-                    class="upload-param-key"
-                    placeholder="参数名 (如: expiration)"
-                />
-                <input
-                    type="text"
-                    class="upload-param-value"
-                    placeholder="参数值 (如: 600)"
-                />
-                <select class="upload-param-usage" title="参数使用场景">
-                    <option value="common">通用</option>
-                    <option value="temp">临时上传</option>
-                    <option value="album">上传到相册</option>
-                </select>
-                <button class="btn-remove-upload-param">❌</button>
-            </div>
-        </template>
-
-        <!-- 模板项模板 -->
-        <template id="templateItemTemplate">
-            <div class="template-item">
-                <div class="template-header">
-                    <div class="template-name"></div>
-                    <div class="template-type-badge"></div>
-                </div>
-                <div class="template-body">
-                    <div class="template-endpoint"></div>
-                </div>
-                <div class="template-actions">
-                    <button class="btn-edit-template small secondary">✏️ 编辑</button>
-                    <button class="btn-delete-template small danger">🗑️ 删除</button>
-                </div>
-            </div>
-        </template>
-
-        <!-- 配置预览弹窗 -->
-        <div id="previewModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>📦 确认导入配置</h2>
-                    <button class="close-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p class="modal-tip">请检查即将导入的配置内容：</p>
-                    <pre id="previewContent" class="json-preview"></pre>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn secondary close-btn">取消</button>
-                    <button id="confirmImportBtn" class="btn primary">确认导入</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 模板管理弹窗 -->
-        <div id="templateModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>🎯 服务商模板管理</h2>
-                    <button class="close-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="template-list">
+            <!-- 内容区域 -->
+            <main class="content-area">
+                <!-- 服务商配置标签页 -->
+                <section id="tab-providers" class="tab-content active">
+                    <!-- 服务商管理 -->
+                    <div class="section-providers">
                         <div class="section-header">
-                            <h3>现有模板</h3>
-                            <button id="addTemplateBtn" class="btn primary small">➕ 新增模板</button>
+                            <h2>🤖 AI 服务商</h2>
+                            <button id="addProviderBtn" class="btn primary small round">
+                                <span class="icon">➕</span> 添加
+                            </button>
                         </div>
-                        <div id="templatesList" class="templates-list">
-                            <!-- 模板列表将通过JS动态生成 -->
+                        <div id="providersList" class="providers-list">
+                            <!-- 服务商列表将通过JS动态生成 -->
+                        </div>
+
+                        <div id="noProvidersMessage" class="no-providers-message">
+                            <p>暂无服务商配置</p>
+                            <p>点击右上角 "添加" 按钮配置第一个服务商</p>
                         </div>
                     </div>
-                    
-                    <!-- 模板编辑表单 -->
-                    <div id="templateFormSection" class="template-form" style="display: none;">
-                        <h3 id="templateFormTitle">新增模板</h3>
+
+                    <!-- 添加/编辑服务商表单 -->
+                    <div id="providerFormSection" class="card form-card" style="display: none">
+                        <h2 id="formTitle">添加服务商</h2>
                         <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="providerTemplate">服务商模板</label>
+                                <div class="template-row">
+                                    <select id="providerTemplate">
+                                        <option value="">选择模板（可选）</option>
+                                        <!-- 模板选项将通过JS动态加载 -->
+                                    </select>
+                                    <button type="button" id="manageTemplatesBtn"
+                                        class="btn secondary small">管理模板</button>
+                                </div>
+                                <span class="hint">选择模板可快速填充常用配置</span>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="providerName">服务商名称</label>
+                                <input type="text" id="providerName" placeholder="例如: OpenAI, 我的API" />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>服务类型</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="serviceType" value="generate" checked />
+                                        <span>🎨 画图</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="serviceType" value="edit" />
+                                        <span>✏️ 改图</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 改图模式配置 -->
+                            <div id="editModeConfig" class="form-group full-width" style="display: none;">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="providerUseMultipart" />
+                                    <span>📤 使用 multipart/form-data 格式上传图片</span>
+                                </label>
+                                <div id="multipartConfig" class="form-row" style="margin-top: 8px; display: none;">
+                                    <div class="form-group">
+                                        <label for="providerImageFieldName">图片字段名</label>
+                                        <input type="text" id="providerImageFieldName" placeholder="image"
+                                            value="image" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="providerEndpoint">API Endpoint</label>
+                                <input type="text" id="providerEndpoint"
+                                    placeholder="https://api.example.com/v1/images/generations" />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="providerKey">API Key</label>
+                                <input type="password" id="providerKey" placeholder="sk-..." />
+                            </div>
+
+                            <!-- 异步配置: 紧凑版 -->
+                            <div class="form-group full-width">
+                                <div class="accordion-header">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="providerAsyncMode" />
+                                        <span>⏳ 异步模式 (轮询)</span>
+                                    </label>
+                                </div>
+
+                                <div id="asyncConfigSection" class="accordion-content" style="display: none">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Job ID Path</label>
+                                            <input type="text" id="providerJobIdPath" placeholder="data.id" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Poll Interval (s)</label>
+                                            <input type="number" id="providerPollInterval" value="2" min="1" max="10" />
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Poll URL Template</label>
+                                        <input type="text" id="providerPollUrl" placeholder="https://.../tasks/{id}" />
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>Status Path</label>
+                                            <input type="text" id="providerStatusPath" placeholder="status" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Success Value</label>
+                                            <input type="text" id="providerSuccessValue" placeholder="SUCCEEDED" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>Response Path (Optional)</label>
+                                <input type="text" id="providerResponsePath" placeholder="data[0].url" />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>Headers</label>
+                                <div id="customHeadersList" class="custom-params-list"></div>
+                                <button id="addHeaderBtn" class="btn text-btn small">
+                                    + Add Header
+                                </button>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label>Body Params</label>
+                                <div id="customParamsList" class="custom-params-list"></div>
+                                <button id="addParamBtn" class="btn text-btn small">
+                                    + Add Param
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-actions right">
+                            <button id="cancelProviderBtn" class="btn text-btn">
+                                取消
+                            </button>
+                            <button id="saveProviderBtn" class="btn primary">
+                                保存
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 全局配置标签页 -->
+                <section id="tab-global" class="tab-content">
+                    <!-- 全局设置 -->
+                    <div class="card settings-card">
+                        <h2>⚙️ 全局设置</h2>
+                        <div class="form-row">
                             <div class="form-group">
-                                <label for="templateName">模板名称</label>
-                                <input type="text" id="templateName" placeholder="例如: NewAPI 生图">
+                                <label for="maxHistory">历史记录数量</label>
+                                <input type="number" id="maxHistory" value="100" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="imagesPerRow">每行图片数</label>
+                                <input type="number" id="imagesPerRow" value="4" />
+                            </div>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="useNotifications" checked />
+                                <span>启用桌面通知</span>
+                            </label>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="allowNSFW" />
+                                <span>🔞 允许敏感内容</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 历史记录密码保护 -->
+                    <div class="card settings-card">
+                        <h2>🔒 历史记录密码保护</h2>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>密码状态</label>
+                                <div id="passwordStatus" class="password-status">
+                                    <span class="status-indicator">❌ 未设置</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 未设置密码时的表单 -->
+                        <div id="newPasswordForm" class="password-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="historyPassword">设置密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="historyPassword" placeholder="输入保护密码" />
+                                        <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                            👁️
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="historyPasswordConfirm">确认密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="historyPasswordConfirm" placeholder="再次输入密码" />
+                                        <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                            👁️
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button id="setPasswordBtn" class="btn primary small">
+                                    🔐 设置密码
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 已设置密码时的表单 -->
+                        <div id="changePasswordForm" class="password-form" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="currentPassword">原密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="currentPassword" placeholder="输入当前密码" />
+                                        <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                            👁️
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="newHistoryPassword">新密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="newHistoryPassword" placeholder="输入新密码（留空则不修改）" />
+                                        <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                            👁️
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="newHistoryPasswordConfirm">确认新密码</label>
+                                    <div class="password-input-wrapper">
+                                        <input type="password" id="newHistoryPasswordConfirm" placeholder="再次输入新密码" />
+                                        <button type="button" class="password-toggle" title="显示/隐藏密码">
+                                            👁️
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button id="changePasswordBtn" class="btn primary small">
+                                    🔑 修改密码
+                                </button>
+                                <button id="clearPasswordBtn" class="btn danger small">
+                                    🗑️ 清除密码
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="passwordMessage" class="password-message"></div>
+                    </div>
+                </section>
+
+                <!-- 图片上传标签页 -->
+                <section id="tab-upload" class="tab-content">
+                    <!-- 图片上传服务管理 -->
+                    <div class="section-upload-services">
+                        <div class="section-header">
+                            <h2>📤 图片上传服务</h2>
+                            <button id="addUploadServiceBtn" class="btn primary small round">
+                                <span class="icon">➕</span> 添加
+                            </button>
+                        </div>
+                        <div id="uploadServicesList" class="providers-list">
+                            <!-- 上传服务列表将通过JS动态生成 -->
+                        </div>
+
+                        <div id="noUploadServicesMessage" class="no-providers-message">
+                            <p>暂无上传服务配置</p>
+                            <p>点击右上角 "添加" 按钮配置第一个上传服务</p>
+                        </div>
+                    </div>
+
+                    <!-- 添加/编辑上传服务表单 -->
+                    <div id="uploadServiceFormSection" class="card form-card" style="display: none">
+                        <h2 id="uploadFormTitle">添加上传服务</h2>
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="uploadServiceName">服务名称</label>
+                                <input type="text" id="uploadServiceName" placeholder="例如: PicGo.net, SM.MS" />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="uploadServiceUrl">上传端点</label>
+                                <input type="text" id="uploadServiceUrl"
+                                    placeholder="https://www.picgo.net/api/1/upload" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="uploadServiceKey">API Key (可选)</label>
+                                <input type="password" id="uploadServiceKey" placeholder="上传服务的API密钥" />
                             </div>
                             <div class="form-group">
-                                <label for="templateServiceType">服务类型</label>
-                                <select id="templateServiceType">
-                                    <option value="generate">🎨 画图</option>
-                                    <option value="edit">✏️ 改图</option>
+                                <label for="uploadServiceAuthType">认证方式</label>
+                                <select id="uploadServiceAuthType">
+                                    <option value="header">Header (推荐)</option>
+                                    <option value="param">参数</option>
+                                    <option value="bearer">Bearer Token</option>
                                 </select>
                             </div>
-                            <div class="form-group full-width">
-                                <label for="templateEndpoint">API Endpoint</label>
-                                <input type="text" id="templateEndpoint" placeholder="https://api.example.com/v1/images/generations">
-                            </div>
-                            <div class="form-group full-width">
-                                <label for="templateResponsePath">Response Path</label>
-                                <input type="text" id="templateResponsePath" placeholder="data[0].url">
+
+                            <div class="form-group">
+                                <label for="uploadServiceFieldName">文件字段名</label>
+                                <input type="text" id="uploadServiceFieldName" placeholder="source" value="source" />
                             </div>
                             <div class="form-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="templateUseMultipart">
-                                    <span>使用 multipart/form-data</span>
-                                </label>
+                                <label for="uploadServiceResponsePath">响应路径</label>
+                                <input type="text" id="uploadServiceResponsePath" placeholder="image.url"
+                                    value="image.url" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="uploadServiceFormat">响应格式</label>
+                                <select id="uploadServiceFormat">
+                                    <option value="json">JSON (默认)</option>
+                                    <option value="txt">纯文本URL</option>
+                                </select>
                             </div>
                             <div class="form-group">
-                                <label for="templateImageFieldName">图片字段名</label>
-                                <input type="text" id="templateImageFieldName" placeholder="image" value="image">
+                                <label for="uploadServiceHeaderName">认证Header名</label>
+                                <input type="text" id="uploadServiceHeaderName" placeholder="X-API-Key"
+                                    value="X-API-Key" />
                             </div>
-                            
-                            <!-- 自定义参数 -->
+
                             <div class="form-group full-width">
-                                <label>预设参数</label>
-                                <div id="templateParamsList" class="custom-params-list"></div>
-                                <button type="button" id="addTemplateParamBtn" class="btn text-btn small">+ 添加参数</button>
+                                <label>自定义参数</label>
+                                <div id="uploadCustomParamsList" class="custom-params-list"></div>
+                                <button id="addUploadParamBtn" class="btn text-btn small">
+                                    + 添加参数
+                                </button>
+                                <span class="hint">例如: expiration=600 (imgbb图片10分钟后删除)</span>
                             </div>
-                            
-                            <!-- 自定义请求头 -->
+
+
+                        </div>
+
+                        <div class="form-actions right">
+                            <button id="cancelUploadServiceBtn" class="btn text-btn">
+                                取消
+                            </button>
+                            <button id="saveUploadServiceBtn" class="btn primary">
+                                保存
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 使用说明 -->
+                    <details class="card settings-card" style="margin-top: 20px">
+                        <summary style="cursor: pointer; outline: none;">
+                            <h2 style="display: inline; margin: 0;">📖 使用说明</h2>
+                        </summary>
+                        <div style="color: #4a5568; font-size: 14px; line-height: 1.6; margin-top: 16px;">
+                            <p><strong>什么是图片上传服务？</strong></p>
+                            <p>当改图API无法直接访问网页图片URL时，可以先将图片上传到中转服务获取可访问的URL。</p>
+
+                            <p style="margin-top: 16px;"><strong>配置示例：</strong></p>
+
+                            <div
+                                style="background: #f8fafc; padding: 12px; border-radius: 6px; font-family: monospace; font-size: 13px; margin: 8px 0;">
+                                端点: https://api.example.com/upload<br>
+                                认证方式: Bearer Token<br>
+                                文件字段名: file<br>
+                                响应路径: data.url<br>
+                                响应格式: JSON
+                            </div>
+
+                            <p style="margin-top: 16px;"><strong>自定义参数说明：</strong></p>
+                            <ul style="margin: 8px 0; padding-left: 20px;">
+                                <li><strong>expiration</strong> - 图片过期时间（秒），如600表示10分钟后删除</li>
+                                <li><strong>key</strong> - API密钥（当认证方式为"参数"时使用）</li>
+                                <li><strong>format</strong> - 响应格式，如json、txt等</li>
+                                <li><strong>album</strong> - 相册ID（某些服务支持）</li>
+                                <li><strong>title</strong> - 图片标题</li>
+                                <li><strong>description</strong> - 图片描述</li>
+                            </ul>
+
+                            <p style="margin-top: 16px;"><strong>参数使用场景：</strong></p>
+                            <ul style="margin: 8px 0; padding-left: 20px;">
+                                <li><strong>通用</strong> - 在所有上传场景中都会使用的参数</li>
+                                <li><strong>临时上传</strong> - 仅在改图时的临时上传中使用（如expiration参数）</li>
+                                <li><strong>上传到相册</strong> - 仅在分享图片到相册时使用（如album参数）</li>
+                            </ul>
+
+                            <p style="margin-top: 16px;"><strong>使用方法：</strong></p>
+                            <ol style="margin: 8px 0; padding-left: 20px;">
+                                <li>选择合适的图床服务并获取API密钥</li>
+                                <li>点击"添加"按钮配置上传服务</li>
+                                <li>为每个参数选择合适的使用场景</li>
+                                <li>点击服务卡片激活要使用的服务</li>
+                                <li>右键选中文字，选择改图服务</li>
+                                <li>在弹出的对话框中选择本地图片或点击"上传到图床"</li>
+                                <li>系统会根据使用场景自动选择相应的参数</li>
+                            </ol>
+
+                            <p style="margin-top: 16px;"><strong>注意事项：</strong></p>
+                            <ul style="margin: 8px 0; padding-left: 20px;">
+                                <li>确保上传服务支持跨域请求（CORS）</li>
+                                <li>上传的图片应该是公开可访问的URL</li>
+                                <li>建议使用HTTPS协议的上传服务</li>
+                                <li>注意上传服务的文件大小限制</li>
+                                <li>激活的服务会显示"ACTIVE"标识</li>
+                            </ul>
+                        </div>
+                    </details>
+                </section>
+
+                <!-- 备份标签页 -->
+                <section id="tab-backup" class="tab-content">
+                    <!-- WebDAV 同步设置 -->
+                    <div class="card settings-card">
+                        <h2>☁️ WebDAV 同步</h2>
+                        <div class="form-row">
                             <div class="form-group full-width">
-                                <label>预设请求头</label>
-                                <div id="templateHeadersList" class="custom-params-list"></div>
-                                <button type="button" id="addTemplateHeaderBtn" class="btn text-btn small">+ 添加请求头</button>
+                                <label for="webdavUrl">WebDAV 服务器地址</label>
+                                <input type="text" id="webdavUrl"
+                                    placeholder="https://dav.example.com/path/to/folder" />
                             </div>
                         </div>
-                        <div class="form-actions">
-                            <button id="cancelTemplateBtn" class="btn secondary">取消</button>
-                            <button id="saveTemplateBtn" class="btn primary">保存模板</button>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="webdavUsername">用户名</label>
+                                <input type="text" id="webdavUsername" placeholder="用户名" />
+                            </div>
+                            <div class="form-group">
+                                <label for="webdavPassword">密码</label>
+                                <input type="password" id="webdavPassword" placeholder="密码" />
+                            </div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label for="webdavFilename">配置文件名</label>
+                                <input type="text" id="webdavFilename" placeholder="ai-drawer-config.json"
+                                    value="ai-drawer-config.json" />
+                            </div>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="webdavAutoSync" />
+                                <span>自动同步（保存设置时同时上传）</span>
+                            </label>
+                        </div>
+                        <div class="form-actions" style="margin-top: 12px;">
+                            <button id="webdavTestBtn" class="btn secondary small">
+                                🔗 测试连接
+                            </button>
+                            <button id="webdavUploadBtn" class="btn secondary small">
+                                ☁️ 上传配置
+                            </button>
+                            <button id="webdavDownloadBtn" class="btn secondary small">
+                                📥 下载配置
+                            </button>
+                        </div>
+                        <div id="webdavStatus" class="status" style="margin-top: 8px;"></div>
+                    </div>
+
+                    <!-- 安全密钥 -->
+                    <div class="card settings-card">
+                        <h2>🔐 安全密钥</h2>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label for="securityKey">安全密钥</label>
+                                <input type="password" id="securityKey" placeholder="用于加密/解密配置文件" />
+                                <span class="hint">导出、上传 WebDAV 时会使用此密钥加密配置</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 导出/导入 -->
+                    <div class="card settings-card">
+                        <h2>📦 导出/导入</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>导出配置</label>
+                                <button id="exportSettingsBtn" class="btn secondary">
+                                    📤 导出配置
+                                </button>
+                                <span class="hint">将当前配置导出为 JSON 文件</span>
+                            </div>
+                            <div class="form-group">
+                                <label>导入配置</label>
+                                <button id="importSettingsBtn" class="btn secondary">
+                                    📥 导入配置
+                                </button>
+                                <input type="file" id="importFile" accept=".json" style="display: none" />
+                                <span class="hint">从 JSON 文件导入配置</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 底部操作栏 -->
+                <div class="actions-footer">
+                    <div class="left-actions">
+                        <button id="saveAllBtn" class="btn primary big">
+                            💾 保存设置
+                        </button>
+                    </div>
+                    <div class="right-actions">
+                        <button id="resetBtn" class="btn danger small text-btn">
+                            重置
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 状态提示 -->
+                <div id="status" class="status"></div>
+            </main>
+        </div>
+
+        <footer>
+            <p>
+                💡
+                提示：配置完成后，选中网页上的文字，右键点击"AI画图助手"选择对应的服务商即可生成图片
+            </p>
+            <p class="shortcut">
+                快捷键：<kbd id="shortcutDisplay">Ctrl+Shift+D</kbd>
+                <span id="shortcutHint" style="display: none;">
+                    （
+                    <a href="#" id="shortcutSettingsLink">设置快捷键</a>
+                    ）
+                </span>
+                <span id="shortcutDesc">(使用当前激活的服务商)</span>
+            </p>
+        </footer>
+    </div>
+
+    <!-- 上传服务项模板 -->
+    <template id="uploadServiceItemTemplate">
+        <div class="provider-item" draggable="true">
+            <div class="provider-card-header">
+                <div class="provider-name"></div>
+                <div class="provider-status-badge" style="display: none">
+                    ACTIVE
+                </div>
+            </div>
+            <div class="provider-card-body">
+                <div class="provider-endpoint" title=""></div>
+            </div>
+            <div class="provider-card-footer">
+                <div class="provider-actions">
+                    <button class="btn-test small secondary" title="测试此上传服务">
+                        🧪
+                    </button>
+                    <button class="btn-copy small secondary icon-btn" title="复制">
+                        📋
+                    </button>
+                    <button class="btn-edit small secondary icon-btn" title="编辑">
+                        ✏️
+                    </button>
+                    <button class="btn-delete small danger icon-btn" title="删除">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- 服务商项模板 -->
+    <template id="providerItemTemplate">
+        <div class="provider-item" draggable="true">
+            <div class="provider-card-header">
+                <div class="provider-name"></div>
+                <div class="provider-status-badge" style="display: none">
+                    ACTIVE
+                </div>
+            </div>
+            <div class="provider-card-body">
+                <div class="provider-endpoint" title=""></div>
+            </div>
+            <div class="provider-card-footer">
+                <div class="provider-actions">
+                    <button class="btn-test small secondary" title="测试此服务商">
+                        🧪
+                    </button>
+                    <button class="btn-copy small secondary icon-btn" title="复制">
+                        📋
+                    </button>
+                    <button class="btn-edit small secondary icon-btn" title="编辑">
+                        ✏️
+                    </button>
+                    <button class="btn-delete small danger icon-btn" title="删除">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- 参数行模板 -->
+    <template id="paramRowTemplate">
+        <div class="param-row">
+            <input type="text" class="param-key" placeholder="参数名" />
+            <select class="param-type">
+                <option value="string">string</option>
+                <option value="int">int</option>
+                <option value="float">float</option>
+                <option value="bool">bool</option>
+                <option value="object">object</option>
+                <option value="list">list</option>
+                <option value="random">random</option>
+            </select>
+            <input type="text" class="param-value" placeholder="参数值" />
+            <select class="param-field-type" title="字段类型（可选）">
+                <option value="">默认</option>
+                <option value="prompt">提示词</option>
+                <option value="negativePrompt">反向提示词</option>
+                <option value="imageUrl">图片URL</option>
+            </select>
+            <button class="btn-remove-param">❌</button>
+        </div>
+    </template>
+
+    <!-- 消息头行模板 -->
+    <template id="headerRowTemplate">
+        <div class="header-row">
+            <input type="text" class="header-key" placeholder="Header名 (如: Authorization)" />
+            <input type="text" class="header-value" placeholder="Header值" />
+            <button class="btn-remove-header">❌</button>
+        </div>
+    </template>
+
+    <!-- 上传参数行模板 -->
+    <template id="uploadParamRowTemplate">
+        <div class="upload-param-row">
+            <input type="text" class="upload-param-key" placeholder="参数名 (如: expiration)" />
+            <input type="text" class="upload-param-value" placeholder="参数值 (如: 600)" />
+            <select class="upload-param-usage" title="参数使用场景">
+                <option value="common">通用</option>
+                <option value="temp">临时上传</option>
+                <option value="album">上传到相册</option>
+            </select>
+            <button class="btn-remove-upload-param">❌</button>
+        </div>
+    </template>
+
+    <!-- 模板项模板 -->
+    <template id="templateItemTemplate">
+        <div class="template-item">
+            <div class="template-header">
+                <div class="template-name"></div>
+                <div class="template-type-badge"></div>
+            </div>
+            <div class="template-body">
+                <div class="template-endpoint"></div>
+            </div>
+            <div class="template-actions">
+                <button class="btn-edit-template small secondary">✏️ 编辑</button>
+                <button class="btn-delete-template small danger">🗑️ 删除</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- 配置预览弹窗 -->
+    <div id="previewModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📦 确认导入配置</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-tip">请检查即将导入的配置内容：</p>
+                <pre id="previewContent" class="json-preview"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn secondary close-btn">取消</button>
+                <button id="confirmImportBtn" class="btn primary">确认导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模板管理弹窗 -->
+    <div id="templateModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎯 服务商模板管理</h2>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="template-list">
+                    <div class="section-header">
+                        <h3>现有模板</h3>
+                        <button id="addTemplateBtn" class="btn primary small">➕ 新增模板</button>
+                    </div>
+                    <div id="templatesList" class="templates-list">
+                        <!-- 模板列表将通过JS动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 模板编辑表单 -->
+                <div id="templateFormSection" class="template-form" style="display: none;">
+                    <h3 id="templateFormTitle">新增模板</h3>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="templateName">模板名称</label>
+                            <input type="text" id="templateName" placeholder="例如: NewAPI 生图">
+                        </div>
+                        <div class="form-group">
+                            <label for="templateServiceType">服务类型</label>
+                            <select id="templateServiceType">
+                                <option value="generate">🎨 画图</option>
+                                <option value="edit">✏️ 改图</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="templateEndpoint">API Endpoint</label>
+                            <input type="text" id="templateEndpoint"
+                                placeholder="https://api.example.com/v1/images/generations">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="templateResponsePath">Response Path</label>
+                            <input type="text" id="templateResponsePath" placeholder="data[0].url">
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="templateUseMultipart">
+                                <span>使用 multipart/form-data</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="templateImageFieldName">图片字段名</label>
+                            <input type="text" id="templateImageFieldName" placeholder="image" value="image">
+                        </div>
+
+                        <!-- 自定义参数 -->
+                        <div class="form-group full-width">
+                            <label>预设参数</label>
+                            <div id="templateParamsList" class="custom-params-list"></div>
+                            <button type="button" id="addTemplateParamBtn" class="btn text-btn small">+ 添加参数</button>
+                        </div>
+
+                        <!-- 自定义请求头 -->
+                        <div class="form-group full-width">
+                            <label>预设请求头</label>
+                            <div id="templateHeadersList" class="custom-params-list"></div>
+                            <button type="button" id="addTemplateHeaderBtn" class="btn text-btn small">+ 添加请求头</button>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button id="cancelTemplateBtn" class="btn secondary">取消</button>
+                        <button id="saveTemplateBtn" class="btn primary">保存模板</button>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <script src="options.js"></script>
-    </body>
+    <script src="options.js"></script>
+</body>
+
 </html>

@@ -65,7 +65,7 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
       try {
         // 将文件转换为base64
         const base64 = await fileToBase64(file);
-        
+
         const result = await chrome.runtime.sendMessage({
           action: 'uploadImage',
           imageData: base64,
@@ -74,18 +74,18 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
 
         if (result.success) {
           currentImageUrl = result.imageUrl;
-          
+
           // 更新预览
           const preview = document.getElementById('imagePreview');
           preview.src = currentImageUrl;
           preview.style.display = 'block';
-          
+
           // 隐藏文件选择区域
           const imageSelectSection = document.getElementById('imageSelectSection');
           if (imageSelectSection) {
             imageSelectSection.style.display = 'none';
           }
-          
+
           showUploadStatus('图片上传成功！', 'success');
           showUploadedImageUrlInDialog(result.imageUrl);
         } else {
@@ -104,6 +104,8 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
   // 提交按钮
   submitBtn.addEventListener('click', async () => {
     const prompt = promptInput.value.trim();
+    const negativePromptInput = document.getElementById('negativePromptInput');
+    const negativePrompt = negativePromptInput && negativePromptInput.offsetParent !== null ? negativePromptInput.value.trim() : "";
 
     // 隐藏之前的错误和调试按钮
     errorMessage.style.display = 'none';
@@ -164,6 +166,7 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
       await chrome.runtime.sendMessage({
         action: 'editImage',
         prompt: prompt,
+        negativePrompt: negativePrompt,
         imageUrl: currentImageUrl,
         providerId: providerId
       });
@@ -178,6 +181,33 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
       }
     }
   });
+
+  // 检查是否配置了反向提示词
+  chrome.runtime.sendMessage({ action: "getSettings" }).then(response => {
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+
+    const negativePromptGroup = document.getElementById("negativePromptGroup");
+    const negativePromptInput = document.getElementById("negativePromptInput");
+
+    let hasNegativePrompt = false;
+    let defaultValue = "";
+
+    if (currentProvider && currentProvider.customParams) {
+      for (const [key, value] of Object.entries(currentProvider.customParams)) {
+        if (value && typeof value === "object" && value.fieldType === "negativePrompt") {
+          hasNegativePrompt = true;
+          defaultValue = value.value || "";
+          break;
+        }
+      }
+    }
+
+    if (hasNegativePrompt) {
+      negativePromptGroup.style.display = "block";
+      negativePromptInput.value = defaultValue;
+    }
+  }).catch(e => console.error(e));
 
   // 调试按钮
   debugBtn.addEventListener('click', () => {
@@ -285,12 +315,12 @@ ${JSON.stringify(debugData.response, null, 2)}
     if (copyBtn) {
       copyBtn.onclick = async () => {
         const originalText = copyBtn.textContent;
-        
+
         try {
           await navigator.clipboard.writeText(imageUrl);
           copyBtn.textContent = "✅ 已复制";
           copyBtn.style.background = "#22c55e";
-          
+
           setTimeout(() => {
             copyBtn.textContent = originalText;
             copyBtn.style.background = "#48bb78";
@@ -299,7 +329,7 @@ ${JSON.stringify(debugData.response, null, 2)}
           console.error("复制图片链接失败:", error);
           copyBtn.textContent = "❌ 失败";
           copyBtn.style.background = "#f56565";
-          
+
           setTimeout(() => {
             copyBtn.textContent = originalText;
             copyBtn.style.background = "#48bb78";

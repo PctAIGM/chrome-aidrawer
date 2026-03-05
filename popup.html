@@ -18,6 +18,13 @@
     <main>
       <div id="inputSection" class="section">
         <textarea id="promptInput" placeholder="输入图片描述..."></textarea>
+        <!-- 反向提示词 -->
+        <div id="negativePromptGroup" class="input-group" style="display: none; margin-top: 8px;">
+          <label for="negativePromptInput"
+            style="font-size: 13px; color: #4a5568; margin-bottom: 4px; display: block;">反向提示词 (可选):</label>
+          <input type="text" id="negativePromptInput" placeholder="输入反向提示词..."
+            style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+        </div>
         <div class="provider-select">
           <label>选择服务商:</label>
           <select id="provider">
@@ -30,11 +37,11 @@
             <button type="button" id="urlTab" class="tab-btn active">输入URL</button>
             <button type="button" id="uploadTab" class="tab-btn">上传图片</button>
           </div>
-          
+
           <div id="urlSection" class="image-input-section">
             <input type="text" id="imageUrlInput" placeholder="输入要编辑的图片URL...">
           </div>
-          
+
           <div id="uploadSection" class="image-input-section" style="display: none;">
             <div class="upload-area">
               <input type="file" id="imageFileInput" accept="image/*" style="display: none;">

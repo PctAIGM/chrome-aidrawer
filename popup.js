@@ -28,7 +28,7 @@ async function loadSettings() {
       action: "getSettings",
     });
     const providers = response.providers || [];
-    
+
     // 加载NSFW设置
     allowNSFW = !!response.allowNSFW;
 
@@ -76,15 +76,56 @@ function onProviderChange() {
   if (serviceType === "edit") {
     imageUrlGroup.style.display = "block";
     btnText.textContent = "开始改图";
-    
+
     // 检查是否有上传服务，决定是否显示上传选项卡
     checkUploadServiceAvailability();
   } else {
     imageUrlGroup.style.display = "none";
     btnText.textContent = "生成图片";
-    
+
     // 重置图片相关状态
     resetImageState();
+  }
+
+  // 检查是否配置了反向提示词
+  checkNegativePromptAvailability();
+}
+
+async function checkNegativePromptAvailability() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const select = document.getElementById("provider");
+    const providerId = select.value;
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+
+    const negativePromptGroup = document.getElementById("negativePromptGroup");
+    const negativePromptInput = document.getElementById("negativePromptInput");
+
+    let hasNegativePrompt = false;
+    let defaultValue = "";
+
+    if (currentProvider && currentProvider.customParams) {
+      for (const [key, value] of Object.entries(currentProvider.customParams)) {
+        if (value && typeof value === "object" && value.fieldType === "negativePrompt") {
+          hasNegativePrompt = true;
+          defaultValue = value.value || "";
+          break;
+        }
+      }
+    }
+
+    if (hasNegativePrompt) {
+      negativePromptGroup.style.display = "block";
+      // 只有在输入框为空，或者切换了服务商时才填充默认值
+      // 为了简单起见，这里直接填充默认值
+      negativePromptInput.value = defaultValue;
+    } else {
+      negativePromptGroup.style.display = "none";
+      negativePromptInput.value = "";
+    }
+  } catch (error) {
+    console.error("检查反向提示词配置失败:", error);
   }
 }
 
@@ -93,17 +134,17 @@ async function checkUploadServiceAvailability() {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
     const uploadServices = response.imageUploadServices || [];
     const hasActiveUploadService = uploadServices.some(service => service.isActive);
-    
+
     // 获取当前选择的服务商配置
     const select = document.getElementById("provider");
     const providerId = select.value;
     const providers = response.providers || [];
     const currentProvider = providers.find(p => p.id === providerId);
     const useMultipart = currentProvider?.useMultipart;
-    
+
     const uploadTab = document.getElementById("uploadTab");
     const uploadImageBtn = document.getElementById("uploadImageBtn");
-    
+
     if (useMultipart) {
       // multipart接口：总是显示上传选项卡，不需要图床
       uploadTab.style.display = "block";
@@ -164,7 +205,7 @@ function setupEventListeners() {
   document.getElementById("selectImageBtn").addEventListener("click", () => {
     document.getElementById("imageFileInput").click();
   });
-  
+
   document.getElementById("imageFileInput").addEventListener("change", handleFileSelect);
   document.getElementById("uploadImageBtn").addEventListener("click", uploadImage);
   document.getElementById("removeImageBtn").addEventListener("click", removeSelectedImage);
@@ -202,9 +243,9 @@ async function generateImage() {
 
     const urlTab = document.getElementById("urlTab");
     const isUrlMode = urlTab.classList.contains("active");
-    
+
     console.log("改图模式 - URL模式:", isUrlMode, "使用multipart:", useMultipart, "上传的图片URL:", uploadedImageUrl);
-    
+
     if (isUrlMode) {
       imageUrl = document.getElementById("imageUrlInput").value.trim();
       if (!imageUrl) {
@@ -215,7 +256,7 @@ async function generateImage() {
     } else {
       // 上传模式
       const fileInput = document.getElementById("imageFileInput");
-      
+
       if (useMultipart && fileInput.files.length > 0) {
         // multipart接口：直接使用本地文件
         imageFile = fileInput.files[0];
@@ -246,6 +287,10 @@ async function generateImage() {
     // 首先在后台设置为当前使用的服务商
     await chrome.runtime.sendMessage({ action: "useProvider", id: providerId });
 
+    // 获取反向提示词
+    const negativePromptInput = document.getElementById("negativePromptInput");
+    const negativePrompt = negativePromptInput && negativePromptInput.offsetParent !== null ? negativePromptInput.value.trim() : "";
+
     // 发送生成/改图消息
     if (serviceType === "edit") {
       if (imageFile) {
@@ -254,6 +299,7 @@ async function generateImage() {
         await chrome.runtime.sendMessage({
           action: "editImage",
           prompt: prompt,
+          negativePrompt: negativePrompt,
           imageData: base64,
           fileName: imageFile.name,
           providerId: providerId,
@@ -264,6 +310,7 @@ async function generateImage() {
         await chrome.runtime.sendMessage({
           action: "editImage",
           prompt: prompt,
+          negativePrompt: negativePrompt,
           imageUrl: imageUrl,
           providerId: providerId,
         });
@@ -272,6 +319,7 @@ async function generateImage() {
       await chrome.runtime.sendMessage({
         action: "generateImage",
         prompt: prompt,
+        negativePrompt: negativePrompt,
       });
     }
 
@@ -293,7 +341,7 @@ async function showResult(prompt) {
   resultImg.src = currentImageUrl;
 
   document.getElementById("resultPrompt").textContent = prompt;
-  
+
   // 重新获取NSFW设置，确保是最新的
   try {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
@@ -301,45 +349,45 @@ async function showResult(prompt) {
   } catch (error) {
     console.error("获取NSFW设置失败:", error);
   }
-  
+
   // 处理NSFW遮罩
   const resultImageContainer = document.querySelector(".result-image");
   const existingOverlay = resultImageContainer.querySelector(".nsfw-overlay");
-  
+
   if (!allowNSFW) {
     // 添加模糊效果和遮罩
     resultImageContainer.classList.add("nsfw-blur");
     resultImageContainer.classList.remove("nsfw-reveal");
-    
+
     // 移除现有遮罩（如果存在）
     if (existingOverlay) {
       existingOverlay.remove();
     }
-    
+
     // 创建新的遮罩
     const overlay = document.createElement("div");
     overlay.className = "nsfw-overlay";
     overlay.innerHTML = '<span class="nsfw-icon">🔞</span><span>点击查看</span>';
-    
+
     // 添加点击事件
     overlay.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       resultImageContainer.classList.add("nsfw-reveal");
     });
-    
+
     // 添加鼠标悬停事件
     overlay.addEventListener("mouseenter", () => {
       overlay.style.background = "rgba(0, 0, 0, 0.8)";
     });
-    
+
     overlay.addEventListener("mouseleave", () => {
       overlay.style.background = "rgba(0, 0, 0, 0.7)";
     });
-    
+
     // 添加到容器
     resultImageContainer.appendChild(overlay);
-    
+
   } else {
     // 移除模糊效果和遮罩
     resultImageContainer.classList.remove("nsfw-blur", "nsfw-reveal");
@@ -347,7 +395,7 @@ async function showResult(prompt) {
       existingOverlay.remove();
     }
   }
-  
+
   // 检查是否有上传服务，显示上传按钮
   checkAndShowUploadButton();
 }
@@ -400,18 +448,18 @@ function handleFileSelect(event) {
     const previewImg = document.getElementById("previewImg");
     const imagePreview = document.getElementById("imagePreview");
     const uploadImageBtn = document.getElementById("uploadImageBtn");
-    
+
     previewImg.src = e.target.result;
     imagePreview.style.display = "block";
     uploadImageBtn.style.display = "block";
-    
+
     // 清除之前的上传状态，但保留提示用户需要重新上传
     hideUploadStatus();
     // 只有当选择了新文件时才清空uploadedImageUrl
     // 这样可以避免用户重复选择同一文件时丢失上传状态
     const currentFileName = file.name;
     const lastFileName = uploadImageBtn.dataset.lastFileName;
-    
+
     if (currentFileName !== lastFileName) {
       uploadedImageUrl = null;
       uploadImageBtn.dataset.lastFileName = currentFileName;
@@ -427,7 +475,7 @@ function handleFileSelect(event) {
 async function uploadImage() {
   const fileInput = document.getElementById("imageFileInput");
   const file = fileInput.files[0];
-  
+
   if (!file) {
     showUploadStatus('请先选择图片', 'error');
     return;
@@ -435,7 +483,7 @@ async function uploadImage() {
 
   const uploadBtn = document.getElementById("uploadImageBtn");
   const originalText = uploadBtn.textContent;
-  
+
   uploadBtn.disabled = true;
   uploadBtn.textContent = '上传中...';
   hideUploadStatus();
@@ -443,7 +491,7 @@ async function uploadImage() {
   try {
     // 将文件转换为base64
     const base64 = await fileToBase64(file);
-    
+
     const result = await chrome.runtime.sendMessage({
       action: 'uploadImage',
       imageData: base64,
@@ -453,13 +501,13 @@ async function uploadImage() {
     if (result.success) {
       uploadedImageUrl = result.imageUrl;
       console.log("图片上传成功，URL:", uploadedImageUrl);
-      
+
       // 更新按钮状态，显示已上传
       const uploadBtn = document.getElementById("uploadImageBtn");
       uploadBtn.textContent = '✅ 已上传';
       uploadBtn.style.background = '#48bb78';
       uploadBtn.style.color = 'white';
-      
+
       // 显示图片URL和复制按钮
       showUploadStatus('图片上传成功！可以开始改图了', 'success');
       showImageUrl(uploadedImageUrl);
@@ -527,15 +575,15 @@ function showImageUrl(imageUrl) {
     copyBtn.onclick = async () => {
       const urlInput = document.getElementById("imageUrlInput");
       const originalText = copyBtn.textContent;
-      
+
       try {
         await navigator.clipboard.writeText(imageUrl);
         copyBtn.textContent = "✅ 已复制";
         copyBtn.style.background = "#48bb78";
-        
+
         // 选中输入框文本
         urlInput.select();
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#667eea";
@@ -544,7 +592,7 @@ function showImageUrl(imageUrl) {
         console.error("复制失败:", error);
         copyBtn.textContent = "❌ 失败";
         copyBtn.style.background = "#f56565";
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#667eea";
@@ -566,18 +614,18 @@ function removeSelectedImage() {
   const imagePreview = document.getElementById("imagePreview");
   const uploadImageBtn = document.getElementById("uploadImageBtn");
   const fileInput = document.getElementById("imageFileInput");
-  
+
   imagePreview.style.display = "none";
   uploadImageBtn.style.display = "none";
   fileInput.value = "";
   uploadedImageUrl = null;
-  
+
   // 重置上传按钮状态
   uploadImageBtn.textContent = "📤 上传到图床";
   uploadImageBtn.style.background = '';
   uploadImageBtn.style.color = '';
   uploadImageBtn.dataset.lastFileName = '';
-  
+
   hideUploadStatus();
   hideImageUrl();
   console.log("已移除选择的图片，重置上传状态");
@@ -639,7 +687,7 @@ function setLoading(loading) {
 function togglePrompt() {
   const promptElement = document.getElementById("resultPrompt");
   const toggleBtn = document.getElementById("togglePromptBtn");
-  
+
   if (promptElement.style.display === "none") {
     promptElement.style.display = "block";
     toggleBtn.textContent = "隐藏提示词";
@@ -655,7 +703,7 @@ async function checkAndShowUploadButton() {
     const response = await chrome.runtime.sendMessage({ action: "getSettings" });
     const uploadServices = response.imageUploadServices || [];
     const hasActiveUploadService = uploadServices.some(service => service.isActive);
-    
+
     const uploadBtn = document.getElementById("uploadToAlbumBtn");
     if (hasActiveUploadService && currentImageUrl) {
       if (uploadBtn) {
@@ -681,7 +729,7 @@ async function uploadCurrentImageToAlbum() {
 
   const uploadBtn = document.getElementById("uploadToAlbumBtn");
   const originalText = uploadBtn.textContent;
-  
+
   uploadBtn.disabled = true;
   uploadBtn.textContent = "上传中...";
 
