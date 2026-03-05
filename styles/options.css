@@ -1136,3 +1136,94 @@ kbd {
     color: var(--accent-color);
     border: 1px solid rgba(0, 122, 255, 0.2);
 }
+
+/* ==================== WebDAV 版本提示 ==================== */
+
+/* WebDAV 版本更新提示框 */
+.webdav-version-alert {
+    position: relative;
+    background: linear-gradient(135deg, rgba(0, 122, 255, 0.05) 0%, rgba(88, 86, 214, 0.05) 100%);
+    border: 1px solid var(--accent-color);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-md);
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.webdav-version-alert .alert-content {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.webdav-version-alert .alert-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.webdav-version-alert .alert-text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.webdav-version-alert .alert-text strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.webdav-version-alert .alert-text span {
+    color: var(--text-secondary);
+}
+
+.webdav-version-alert .alert-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .webdav-version-alert .alert-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .webdav-version-alert .alert-icon {
+        align-self: center;
+    }
+
+    .webdav-version-alert .alert-text {
+        text-align: center;
+    }
+
+    .webdav-version-alert .alert-actions {
+        justify-content: center;
+    }
+}
+

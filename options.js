@@ -17,6 +17,8 @@ const defaultSettings = {
   providerTemplates: [], // 模板列表
   // 历史记录密码保护
   historyPasswordHash: "", // 密码的SHA-256哈希值，空字符串表示未设置
+  // 配置版本号
+  configVersion: 1, // 配置版本号，每次修改时自动递增
 };
 
 // 内置模板
@@ -75,6 +77,11 @@ async function loadSettings() {
     }
 
     applySettingsToUI(settings);
+
+    // 检查 WebDAV 版本更新
+    if (settings.webdavUrl && settings.webdavUsername && settings.webdavPassword) {
+      checkWebDAVVersion(settings);
+    }
   } catch (error) {
     console.error("加载设置失败:", error);
     applySettingsToUI(defaultSettings);
@@ -867,9 +874,13 @@ async function saveProvider() {
       if (newP.isCurrent) currentProviderId = newP.id;
     }
 
+    // 自动递增配置版本号
+    const currentVersion = response.configVersion || 1;
+    const newVersion = currentVersion + 1;
+
     await chrome.runtime.sendMessage({
       action: "saveSettings",
-      settings: { ...response, providers },
+      settings: { ...response, providers, configVersion: newVersion },
     });
     hideProviderForm();
     renderProvidersList(providers);
@@ -877,7 +888,7 @@ async function saveProvider() {
       // const active = providers.find(p => p.id === currentProviderId);
       // if (active) updateCurrentDisplay(active); // Removed
     }
-    showStatus("保存成功", "success");
+    showStatus(`保存成功（版本号：${newVersion}）`, "success");
   } catch (error) {
     showStatus("保存失败: " + error.message, "error");
   }
@@ -956,6 +967,10 @@ async function saveAllSettings() {
   // 图片上传服务配置 - 保持现有的服务配置
   const imageUploadServices = response.imageUploadServices || [];
 
+  // 自动递增配置版本号
+  const currentVersion = response.configVersion || 1;
+  const newVersion = currentVersion + 1;
+
   await chrome.runtime.sendMessage({
     action: "saveSettings",
     settings: {
@@ -973,10 +988,12 @@ async function saveAllSettings() {
       securityKey: securityKey,
       // 图片上传服务配置
       imageUploadServices,
+      // 更新版本号
+      configVersion: newVersion,
     },
   });
 
-  showStatus("所有设置已保存！", "success");
+  showStatus(`所有设置已保存！（版本号：${newVersion}）`, "success");
 
   // 如果开启了自动同步，则保存后自动上传
   if (webdavAutoSync) {
@@ -1129,6 +1146,114 @@ function generateId() {
   );
 }
 
+// ==================== WebDAV 版本检查 ====================
+
+/**
+ * 检查 WebDAV 远程配置的版本号
+ */
+async function checkWebDAVVersion(currentSettings) {
+  try {
+    const config = getWebDAVConfig();
+    if (!config.url) return;
+
+    console.log("正在检查 WebDAV 远程配置版本...");
+
+    // 发送消息给 background 下载配置文件（仅读取元数据）
+    const result = await chrome.runtime.sendMessage({
+      action: "webdavDownload",
+      config: config,
+    });
+
+    if (result.success) {
+      let data = result.data;
+
+      // 检测是否需要解密
+      if (isEncrypted(data)) {
+        // 需要解密，尝试获取密钥
+        let securityKey = await getSecurityKey();
+
+        if (!securityKey) {
+          // 无法解密，无法检查版本
+          console.log("无法解密 WebDAV 配置文件，跳过版本检查");
+          return;
+        }
+
+        // 尝试解密
+        data = await decryptData(data, securityKey);
+      }
+
+      const remoteSettings = JSON.parse(data);
+
+      // 简单校验
+      if (!remoteSettings || typeof remoteSettings !== "object") {
+        console.log("WebDAV 配置文件格式无效，跳过版本检查");
+        return;
+      }
+
+      const currentVersion = currentSettings.configVersion || 1;
+      const remoteVersion = remoteSettings.configVersion || 1;
+
+      console.log(`本地版本号：${currentVersion}，远程版本号：${remoteVersion}`);
+
+      // 如果远程版本号更高，显示提示
+      if (remoteVersion > currentVersion) {
+        showVersionUpdateAlert(currentVersion, remoteVersion);
+      }
+    }
+  } catch (error) {
+    console.log("WebDAV 版本检查失败:", error.message);
+    // 静默失败，不影响正常使用
+  }
+}
+
+/**
+ * 显示版本更新提示
+ */
+function showVersionUpdateAlert(currentVersion, remoteVersion) {
+  // 移除已有的提示
+  const existing = document.getElementById("webdavVersionAlert");
+  if (existing) existing.remove();
+
+  const alert = document.createElement("div");
+  alert.id = "webdavVersionAlert";
+  alert.className = "webdav-version-alert";
+  alert.innerHTML = `
+    <div class="alert-content">
+      <span class="alert-icon">🔄</span>
+      <div class="alert-text">
+        <strong>发现新版本配置</strong>
+        <br>
+        <span>远程版本：${remoteVersion} | 本地版本：${currentVersion}</span>
+      </div>
+      <button id="updateFromWebDAVBtn" class="btn primary small">
+        更新配置
+      </button>
+      <button id="closeVersionAlertBtn" class="btn secondary small">
+        稍后
+      </button>
+    </div>
+  `;
+
+  // 添加到页面顶部
+  const container = document.querySelector(".container");
+  if (container) {
+    container.insertBefore(alert, container.firstChild);
+  }
+
+  // 绑定事件
+  document.getElementById("updateFromWebDAVBtn").onclick = () => {
+    downloadFromWebDAV();
+    alert.remove();
+  };
+
+  document.getElementById("closeVersionAlertBtn").onclick = () => {
+    alert.remove();
+  };
+}
+
+// ==================== 结束 WebDAV 版本检查 ====================
+
+
 function showStatus(msg, type = "info") {
   const el = document.getElementById("status");
   if (!el) return;
@@ -1152,22 +1277,30 @@ async function exportSettings() {
       // 有安全密钥：只移除 securityKey（不加密存储），其他全部保留
       const exportSettings = { ...settings };
       delete exportSettings.securityKey;
+      // 确保版本号存在
+      if (!exportSettings.configVersion) {
+        exportSettings.configVersion = 1;
+      }
       data = await encryptData(JSON.stringify(exportSettings, null, 2), securityKey);
-      showStatus("配置已加密导出", "success");
+      showStatus(`配置已加密导出（版本号：${exportSettings.configVersion}）`, "success");
     } else {
       // 无安全密钥：移除敏感信息后明文导出
       const exportSettings = { ...settings };
       delete exportSettings.securityKey;
       delete exportSettings.webdavPassword;
+      // 确保版本号存在
+      if (!exportSettings.configVersion) {
+        exportSettings.configVersion = 1;
+      }
       data = JSON.stringify(exportSettings, null, 2);
-      showStatus("配置已导出（未加密）", "info");
+      showStatus(`配置已导出（未加密，版本号：${exportSettings.configVersion}）`, "info");
     }
 
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ai-drawer-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `ai-drawer-config-v${exportSettings.configVersion}-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1214,18 +1347,40 @@ async function importSettings(event) {
         throw new Error("配置文件缺少 providers 列表");
       }
 
+      // 获取当前配置版本号
+      const { settings: currentSettings } = await chrome.storage.local.get("settings");
+      const currentVersion = currentSettings.configVersion || 1;
+      const importVersion = settings.configVersion || 1;
+
+      // 如果导入的配置版本号比当前大，给出提示
+      if (importVersion > currentVersion) {
+        const confirmForce = confirm(
+          `⚠️ 警告：导入的配置版本号（${importVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
+          `这可能意味着您的本地配置会丢失更新。\n\n` +
+          `是否继续强制导入？\n\n` +
+          `点击"确定"继续导入（本地配置将被覆盖）\n` +
+          `点击"取消"取消导入`
+        );
+        if (!confirmForce) {
+          showStatus("已取消导入", "info");
+          return;
+        }
+      }
+
       // 弹出预览确认框
       showConfigPreviewModal(settings, async () => {
         try {
           // 补全默认值
           const newSettings = { ...defaultSettings, ...settings };
+          // 保持导入的版本号（不自动递增）
+          newSettings.configVersion = importVersion;
 
           await chrome.runtime.sendMessage({
             action: "saveSettings",
             settings: newSettings,
           });
 
-          showStatus("配置已导入，正在刷新...", "success");
+          showStatus(`配置已导入（版本号：${importVersion}），正在刷新...`, "success");
           setTimeout(() => {
             loadSettings(); // 重新加载设置
           }, 1000);
@@ -1451,16 +1606,26 @@ async function uploadToWebDAV() {
     const securityKey = await getSecurityKey();
 
     let data;
+    const version = settings.configVersion || 1;
+
     if (securityKey) {
       // 有安全密钥：只移除 securityKey（不加密存储），其他全部保留
       const exportSettings = { ...settings };
       delete exportSettings.securityKey;
+      // 确保版本号存在
+      if (!exportSettings.configVersion) {
+        exportSettings.configVersion = 1;
+      }
       data = await encryptData(JSON.stringify(exportSettings, null, 2), securityKey);
     } else {
       // 无安全密钥：移除敏感信息后明文导出
       const exportSettings = { ...settings };
       delete exportSettings.securityKey;
       delete exportSettings.webdavPassword;
+      // 确保版本号存在
+      if (!exportSettings.configVersion) {
+        exportSettings.configVersion = 1;
+      }
       data = JSON.stringify(exportSettings, null, 2);
     }
 
@@ -1471,7 +1636,7 @@ async function uploadToWebDAV() {
     });
 
     if (result.success) {
-      showWebDAVStatus("✅ 配置已上传到 WebDAV", "success");
+      showWebDAVStatus(`✅ 配置已上传到 WebDAV（版本号：${version}）`, "success");
     } else {
       throw new Error(result.error || "上传失败");
     }
@@ -1497,6 +1662,10 @@ async function downloadFromWebDAV() {
   btn.textContent = "⏳";
 
   try {
+    // 获取当前配置版本号
+    const { settings: currentSettings } = await chrome.storage.local.get("settings");
+    const currentVersion = currentSettings.configVersion || 1;
+
     const result = await chrome.runtime.sendMessage({
       action: "webdavDownload",
       config: config,
@@ -1532,18 +1701,37 @@ async function downloadFromWebDAV() {
         throw new Error("配置文件缺少 providers 列表");
       }
 
+      const remoteVersion = settings.configVersion || 1;
+
+      // 如果远程版本号比当前大，给出提示
+      if (remoteVersion > currentVersion) {
+        const confirmForce = confirm(
+          `⚠️ 警告：WebDAV 远程配置版本号（${remoteVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
+          `这将覆盖您的本地配置。\n\n` +
+          `是否继续强制导入？\n\n` +
+          `点击"确定"继续导入（本地配置将被覆盖）\n` +
+          `点击"取消"取消导入`
+        );
+        if (!confirmForce) {
+          showWebDAVStatus("已取消导入", "info");
+          return;
+        }
+      }
+
       // 弹出预览确认框
       showConfigPreviewModal(settings, async () => {
         try {
           // 补全默认值
           const newSettings = { ...defaultSettings, ...settings };
+          // 保持远程配置的版本号（不自动递增）
+          newSettings.configVersion = remoteVersion;
 
           await chrome.runtime.sendMessage({
             action: "saveSettings",
             settings: newSettings,
           });
 
-          showWebDAVStatus("✅ 配置已从 WebDAV 下载并导入", "success");
+          showWebDAVStatus(`✅ 配置已从 WebDAV 下载并导入（版本号：${remoteVersion}）`, "success");
           setTimeout(() => {
             loadSettings(); // 重新加载设置
           }, 1000);
