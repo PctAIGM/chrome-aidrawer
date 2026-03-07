@@ -236,6 +236,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// 向标签页发送消息的通用辅助函数
+// 首先尝试直接发消息（content.js 已加载时成功），
+// 失败时尝试注入 content.js 后重试，
+// 若注入也失败则使用内联函数兜底
+async function sendMessageToTab(tabId, message, fallbackFunc, fallbackArgs) {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (err) {
+    console.log("消息发送失败，尝试注入 content.js:", err.message);
+    try {
+      // 注入 content.js 到页面
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ["content.js"],
+      });
+      // 注入成功后重新发送消息
+      await chrome.tabs.sendMessage(tabId, message);
+    } catch (e) {
+      console.log("注入 content.js 失败，使用内联函数兜底:", e.message);
+      // 最终兜底：注入内联函数
+      if (fallbackFunc) {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: fallbackFunc,
+            args: fallbackArgs || [],
+          });
+        } catch (e2) {
+          console.log("内联函数注入也失败:", e2.message);
+        }
+      }
+    }
+  }
+}
+
 // 处理图片生成
 async function handleGenerateImage(
   prompt,
@@ -264,24 +299,12 @@ async function handleGenerateImage(
 
   // 发送加载状态到页面
   if (tabId) {
-    chrome.tabs
-      .sendMessage(tabId, {
-        action: "imageLoading",
-        prompt: prompt,
-      })
-      .catch(async (err) => {
-        console.log("消息发送失败，尝试注入脚本:", err.message);
-        // 如果消息发送失败，尝试使用 scripting API
-        try {
-          await chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: showInjectedLoadingStatus,
-            args: [prompt],
-          });
-        } catch (e) {
-          console.log("脚本注入也失败:", e.message);
-        }
-      });
+    sendMessageToTab(
+      tabId,
+      { action: "imageLoading", prompt: prompt },
+      showInjectedLoadingStatus,
+      [prompt]
+    );
   }
 
   console.log(`开始${opText}:`, {
@@ -379,8 +402,11 @@ async function handleGenerateImage(
 
       // 发送消息给 content.js 来在当前页面显示图片
       if (tabId) {
-        chrome.tabs
-          .sendMessage(tabId, {
+        const { settings: s } = await chrome.storage.local.get("settings");
+        const allowNSFW = !!s?.allowNSFW;
+        sendMessageToTab(
+          tabId,
+          {
             action: "imageGenerated",
             imageUrl: result.imageUrl,
             prompt: prompt,
@@ -389,22 +415,10 @@ async function handleGenerateImage(
               request: requestBody,
               response: responseData,
             },
-          })
-          .catch(async (err) => {
-            console.log("消息发送失败，尝试注入脚本:", err.message);
-            try {
-              const { settings: s } =
-                await chrome.storage.local.get("settings");
-              const allowNSFW = !!s?.allowNSFW;
-              await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                func: showInjectedSuccessStatus,
-                args: [result.imageUrl, prompt, allowNSFW],
-              });
-            } catch (e) {
-              console.log("脚本注入也失败:", e.message);
-            }
-          });
+          },
+          showInjectedSuccessStatus,
+          [result.imageUrl, prompt, allowNSFW]
+        );
       }
     }
   } catch (error) {
@@ -422,25 +436,17 @@ async function handleGenerateImage(
       .catch(() => { });
 
     if (tabId) {
-      chrome.tabs
-        .sendMessage(tabId, {
+      sendMessageToTab(
+        tabId,
+        {
           action: "imageError",
           error: error.message,
           prompt: prompt,
           debugData: error.debugData || { providerName: provider.name },
-        })
-        .catch(async (err) => {
-          console.log("消息发送失败，尝试注入脚本:", err.message);
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              func: showInjectedErrorStatus,
-              args: [error.message, prompt],
-            });
-          } catch (e) {
-            console.log("脚本注入也失败:", e.message);
-          }
-        });
+        },
+        showInjectedErrorStatus,
+        [error.message, prompt]
+      );
     }
   }
 }
