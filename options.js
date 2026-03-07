@@ -1253,6 +1253,54 @@ function showVersionUpdateAlert(currentVersion, remoteVersion) {
 
 // ==================== 结束 WebDAV 版本检查 ====================
 
+/**
+ * 检查版本号并弹出确认对话框
+ * @param {number} currentVersion - 当前版本号
+ * @param {number} importVersion - 导入/远程版本号
+ * @param {string} sourceName - 配置来源名称（"导入" 或 "WebDAV 远程"）
+ * @returns {boolean} 是否继续导入
+ */
+function checkVersionAndConfirm(currentVersion, importVersion, sourceName) {
+  if (importVersion > currentVersion) {
+    const confirmForce = confirm(
+      `⚠️ 警告：${sourceName}配置版本号（${importVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
+      `这将覆盖您的本地配置。\n\n` +
+      `是否继续强制导入？\n\n` +
+      `点击"确定"继续导入（本地配置将被覆盖）\n` +
+      `点击"取消"取消导入`
+    );
+    return confirmForce;
+  }
+  return true;
+}
+
+/**
+ * 保存导入的设置
+ * @param {object} settings - 要保存的设置
+ * @param {number} importVersion - 导入的版本号
+ * @param {function} statusCallback - 状态显示回调函数
+ */
+async function saveImportedSettings(settings, importVersion, statusCallback) {
+  try {
+    // 补全默认值
+    const newSettings = { ...defaultSettings, ...settings };
+    // 保持导入的版本号（不自动递增）
+    newSettings.configVersion = importVersion;
+
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: newSettings,
+    });
+
+    statusCallback(`配置已导入（版本号：${importVersion}），正在刷新...`, "success");
+    setTimeout(() => {
+      loadSettings(); // 重新加载设置
+    }, 1000);
+  } catch (error) {
+    console.error("导入保存失败:", error);
+    statusCallback("导入保存失败: " + error.message, "error");
+  }
+}
 
 function showStatus(msg, type = "info") {
   const el = document.getElementById("status");
@@ -1353,41 +1401,14 @@ async function importSettings(event) {
       const importVersion = settings.configVersion || 1;
 
       // 如果导入的配置版本号比当前大，给出提示
-      if (importVersion > currentVersion) {
-        const confirmForce = confirm(
-          `⚠️ 警告：导入的配置版本号（${importVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
-          `这可能意味着您的本地配置会丢失更新。\n\n` +
-          `是否继续强制导入？\n\n` +
-          `点击"确定"继续导入（本地配置将被覆盖）\n` +
-          `点击"取消"取消导入`
-        );
-        if (!confirmForce) {
-          showStatus("已取消导入", "info");
-          return;
-        }
+      if (!checkVersionAndConfirm(currentVersion, importVersion, "导入")) {
+        showStatus("已取消导入", "info");
+        return;
       }
 
       // 弹出预览确认框
       showConfigPreviewModal(settings, async () => {
-        try {
-          // 补全默认值
-          const newSettings = { ...defaultSettings, ...settings };
-          // 保持导入的版本号（不自动递增）
-          newSettings.configVersion = importVersion;
-
-          await chrome.runtime.sendMessage({
-            action: "saveSettings",
-            settings: newSettings,
-          });
-
-          showStatus(`配置已导入（版本号：${importVersion}），正在刷新...`, "success");
-          setTimeout(() => {
-            loadSettings(); // 重新加载设置
-          }, 1000);
-        } catch (error) {
-          console.error("导入保存失败:", error);
-          showStatus("导入保存失败: " + error.message, "error");
-        }
+        await saveImportedSettings(settings, importVersion, showStatus);
       });
 
     } catch (error) {
@@ -1704,40 +1725,20 @@ async function downloadFromWebDAV() {
       const remoteVersion = settings.configVersion || 1;
 
       // 如果远程版本号比当前大，给出提示
-      if (remoteVersion > currentVersion) {
-        const confirmForce = confirm(
-          `⚠️ 警告：WebDAV 远程配置版本号（${remoteVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
-          `这将覆盖您的本地配置。\n\n` +
-          `是否继续强制导入？\n\n` +
-          `点击"确定"继续导入（本地配置将被覆盖）\n` +
-          `点击"取消"取消导入`
-        );
-        if (!confirmForce) {
-          showWebDAVStatus("已取消导入", "info");
-          return;
-        }
+      if (!checkVersionAndConfirm(currentVersion, remoteVersion, "WebDAV 远程")) {
+        showWebDAVStatus("已取消导入", "info");
+        return;
       }
 
       // 弹出预览确认框
       showConfigPreviewModal(settings, async () => {
-        try {
-          // 补全默认值
-          const newSettings = { ...defaultSettings, ...settings };
-          // 保持远程配置的版本号（不自动递增）
-          newSettings.configVersion = remoteVersion;
-
-          await chrome.runtime.sendMessage({
-            action: "saveSettings",
-            settings: newSettings,
-          });
-
-          showWebDAVStatus(`✅ 配置已从 WebDAV 下载并导入（版本号：${remoteVersion}）`, "success");
-          setTimeout(() => {
-            loadSettings(); // 重新加载设置
-          }, 1000);
-        } catch (error) {
-          showWebDAVStatus("❌ 导入失败: " + error.message, "error");
-        }
+        await saveImportedSettings(settings, remoteVersion, (msg, type) => {
+          if (type === "success") {
+            showWebDAVStatus(`✅ 配置已从 WebDAV 下载并导入（版本号：${remoteVersion}）`, "success");
+          } else {
+            showWebDAVStatus("❌ 导入失败: " + msg.replace("导入保存失败: ", ""), "error");
+          }
+        });
       });
 
     } else {
