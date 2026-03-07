@@ -1086,20 +1086,225 @@ function showInjectedSuccessStatus(imageUrl, prompt, allowNSFW = false) {
   `;
 
   document.getElementById("ai-draw-mini-open").onclick = () => {
-    // 调用content.js中的完整模态框而不是简单模态框
     container.remove();
 
-    // 发送消息给content script显示完整的结果模态框
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "showResultModal",
-          imageUrl: imageUrl,
-          prompt: prompt,
-          debugData: null // 这里可以传递调试数据如果有的话
-        });
+    // 直接在页面中创建图片预览模态框（因为注入脚本无法使用 chrome.tabs API）
+    const modalOverlay = document.createElement("div");
+    modalOverlay.id = "ai-draw-injected-modal";
+    modalOverlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); z-index: 2147483647;
+      padding: 20px; box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    `;
+
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      background: white; padding: 24px; border-radius: 16px;
+      max-width: 600px; width: 90%; max-height: 90vh;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+      position: relative; text-align: center; display: flex; flex-direction: column;
+      overflow: hidden;
+    `;
+
+    modal.innerHTML = `
+      <div style="font-weight: bold; font-size: 20px; margin-bottom: 20px; color: #1a202c; flex-shrink: 0;">🖼️ 生成成功</div>
+      <div style="flex: 1; overflow-y: auto; margin-bottom: 16px; min-height: 0;">
+        <div id="ai-draw-injected-img-wrapper" style="position: relative; margin-bottom: 20px; cursor: pointer; border-radius: 12px; line-height: 0; display: flex; justify-content: center; max-height: 60vh; overflow: hidden;">
+          <img id="ai-draw-injected-img" src="${imageUrl}" style="
+            max-width: 100%; max-height: 60vh; width: auto; height: auto;
+            border-radius: 12px; border: 1px solid #edf2f7; object-fit: contain;
+            transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            ${!allowNSFW ? 'filter: blur(40px);' : ''}
+          ">
+          ${!allowNSFW ? `
+            <div id="ai-draw-injected-nsfw" style="
+              position: absolute; top:0; left:0; width:100%; height:100%;
+              display: flex; flex-direction: column; align-items: center; justify-content: center;
+              background: rgba(0,0,0,0.15); color: white; text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+              font-size: 14px; font-weight: 600; pointer-events: none; backdrop-filter: blur(4px);
+            ">
+              <span style="font-size: 32px; margin-bottom: 12px;">🔞</span>
+              <div style="background: rgba(0,0,0,0.4); padding: 8px 16px; border-radius: 20px;">点击查看风险内容</div>
+            </div>
+          ` : ''}
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <div id="ai-draw-injected-prompt-toggle" style="
+            font-size: 13px; color: #667eea; cursor: pointer; margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+          ">
+            <span>👁️‍🗨️</span> 显示/隐藏提示词
+          </div>
+          <div id="ai-draw-injected-prompt-text" style="
+            font-size: 14px; color: #718096; line-height: 1.5; font-style: italic;
+            background: #f8fafc; padding: 12px; border-radius: 8px; display: none;
+            text-align: left; word-break: break-all;
+          ">
+            "${prompt}"
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; flex-shrink: 0; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 8px;">
+        <button id="ai-draw-injected-copy" style="padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s; background: #667eea; color: white; border: none;">复制图片</button>
+        <button id="ai-draw-injected-download" style="padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s; background: #f3f4f6; color: #333; border: 1px solid #ddd;">下载</button>
+        <button id="ai-draw-injected-share" style="display: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s; background: #f3f4f6; color: #333; border: 1px solid #ddd;" title="分享到相册">🔗</button>
+        <button id="ai-draw-injected-close" style="padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s; background: #f3f4f6; color: #333; border: 1px solid #ddd;">关闭</button>
+      </div>
+    `;
+
+    modalOverlay.appendChild(modal);
+    document.body.appendChild(modalOverlay);
+
+    // 提示词折叠/展开
+    const promptToggle = document.getElementById("ai-draw-injected-prompt-toggle");
+    const promptText = document.getElementById("ai-draw-injected-prompt-text");
+    if (promptToggle && promptText) {
+      promptToggle.onclick = () => {
+        const isHidden = promptText.style.display === "none";
+        promptText.style.display = isHidden ? "block" : "none";
+        if (isHidden) {
+          const contentArea = modal.querySelector('div[style*="flex: 1"]');
+          if (contentArea) {
+            setTimeout(() => (contentArea.scrollTop = contentArea.scrollHeight), 50);
+          }
+        }
+      };
+    }
+
+    // NSFW 点击揭示
+    if (!allowNSFW) {
+      const imgWrapper = document.getElementById("ai-draw-injected-img-wrapper");
+      const img = document.getElementById("ai-draw-injected-img");
+      const nsfwOverlay = document.getElementById("ai-draw-injected-nsfw");
+      if (imgWrapper) {
+        imgWrapper.onclick = (e) => {
+          e.stopPropagation();
+          const isBlurred = img.style.filter.includes("blur");
+          if (isBlurred) {
+            img.style.filter = "none";
+            if (nsfwOverlay) nsfwOverlay.style.display = "none";
+          } else {
+            img.style.filter = "blur(40px)";
+            if (nsfwOverlay) nsfwOverlay.style.display = "flex";
+          }
+        };
       }
-    });
+    }
+
+    // 复制图片按钮
+    const copyBtn = document.getElementById("ai-draw-injected-copy");
+    if (copyBtn) {
+      copyBtn.onclick = async () => {
+        const originalText = copyBtn.textContent;
+        try {
+          copyBtn.textContent = "⌛ 正在准备...";
+          const clipboardPromise = (async () => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = imageUrl;
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = () => reject(new Error("图片加载失败"));
+            });
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            return new Promise((resolve, reject) => {
+              canvas.toBlob((blob) => {
+                if (blob) resolve(blob);
+                else reject(new Error("转换失败"));
+              }, "image/png");
+            });
+          })();
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": clipboardPromise }),
+          ]);
+          copyBtn.textContent = "✅ 已复制";
+          setTimeout(() => (copyBtn.textContent = originalText), 2000);
+        } catch (e) {
+          console.error("复制失败:", e);
+          copyBtn.textContent = "❌ 复制失败";
+          setTimeout(() => (copyBtn.textContent = originalText), 2000);
+          alert("由于浏览器限制，复制图片失败。尝试：\n1. 直接右键点击图片选择\"复制图片\"\n2. 点击\"下载\"按钮保存到本地");
+        }
+      };
+    }
+
+    // 下载按钮
+    const downloadBtn = document.getElementById("ai-draw-injected-download");
+    if (downloadBtn) {
+      downloadBtn.onclick = () => {
+        const link = document.createElement("a");
+        link.href = imageUrl;
+        link.download = `ai-generated-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        const originalText = downloadBtn.textContent;
+        downloadBtn.textContent = "✅ 已下载";
+        setTimeout(() => (downloadBtn.textContent = originalText), 2000);
+      };
+    }
+
+    // 分享按钮（需要 chrome.runtime.sendMessage，在注入脚本中可用）
+    const shareBtn = document.getElementById("ai-draw-injected-share");
+    if (shareBtn && typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      // 检查是否有激活的上传服务
+      chrome.storage.local.get("settings", (result) => {
+        const settings = result.settings;
+        const uploadServices = settings?.imageUploadServices || [];
+        const hasActiveUploadService = uploadServices.some(s => s.isActive);
+        if (hasActiveUploadService) {
+          shareBtn.style.display = "";
+        }
+      });
+
+      shareBtn.onclick = () => {
+        const originalText = shareBtn.textContent;
+        shareBtn.textContent = "⏳";
+        shareBtn.disabled = true;
+        chrome.runtime.sendMessage({
+          action: "uploadImageToAlbum",
+          imageUrl: imageUrl,
+          prompt: prompt
+        }, (res) => {
+          if (res && res.success) {
+            shareBtn.textContent = "✅";
+            shareBtn.style.background = "#48bb78";
+            shareBtn.style.color = "white";
+            setTimeout(() => {
+              shareBtn.textContent = originalText;
+              shareBtn.style.background = "";
+              shareBtn.style.color = "";
+              shareBtn.disabled = false;
+            }, 2000);
+          } else {
+            shareBtn.textContent = "❌";
+            shareBtn.style.background = "#f56565";
+            shareBtn.style.color = "white";
+            setTimeout(() => {
+              shareBtn.textContent = originalText;
+              shareBtn.style.background = "";
+              shareBtn.style.color = "";
+              shareBtn.disabled = false;
+            }, 2000);
+          }
+        });
+      };
+    }
+
+    // 关闭按钮
+    document.getElementById("ai-draw-injected-close").onclick = () => modalOverlay.remove();
+
+    // 点击背景关闭
+    modalOverlay.onclick = (e) => {
+      if (e.target === modalOverlay) modalOverlay.remove();
+    };
   };
 
   document.getElementById("ai-draw-mini-close").onclick = () =>
