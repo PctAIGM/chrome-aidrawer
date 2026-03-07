@@ -716,6 +716,67 @@ async function shareSelectedImages() {
   updateExportButton();
 }
 
+// 全屏放大展示图片
+function showFullscreenImage(imageUrl) {
+  const existing = document.getElementById("ai-draw-fullscreen");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "ai-draw-fullscreen";
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92); z-index: 99999999;
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out; padding: 20px; box-sizing: border-box;
+  `;
+
+  const img = document.createElement("img");
+  img.src = imageUrl;
+  img.style.cssText = `
+    max-width: 95vw; max-height: 95vh; object-fit: contain;
+    border-radius: 8px; transition: transform 0.3s ease;
+    cursor: default; user-select: none;
+  `;
+
+  let scale = 1;
+  img.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    scale += e.deltaY > 0 ? -0.1 : 0.1;
+    scale = Math.max(0.3, Math.min(5, scale));
+    img.style.transform = `scale(${scale})`;
+  }, { passive: false });
+
+  img.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    scale = 1;
+    img.style.transform = "scale(1)";
+  });
+
+  img.onclick = (e) => e.stopPropagation();
+  overlay.onclick = () => overlay.remove();
+
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    }
+  };
+  document.addEventListener("keydown", onKey);
+
+  const hint = document.createElement("div");
+  hint.style.cssText = `
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.6); font-size: 13px;
+    font-family: -apple-system, sans-serif; pointer-events: none;
+  `;
+  hint.textContent = "点击空白关闭 · 滚轮缩放 · 双击重置";
+
+  overlay.appendChild(img);
+  overlay.appendChild(hint);
+  document.body.appendChild(overlay);
+}
+
 function openModal(item) {
   const modal = document.getElementById("imageModal");
   const modalImage = document.getElementById("modalImage");
@@ -794,6 +855,16 @@ function openModal(item) {
     retryButtons.forEach(btn => {
       btn.addEventListener('click', function () {
         retryLoadImage(this);
+      });
+    });
+
+    // 为图片添加点击全屏预览
+    const modalImgs = viewer.querySelectorAll('img');
+    modalImgs.forEach(imgEl => {
+      imgEl.style.cursor = 'zoom-in';
+      imgEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showFullscreenImage(imgEl.src);
       });
     });
   }

@@ -1180,24 +1180,78 @@ function showInjectedSuccessStatus(imageUrl, prompt, allowNSFW = false) {
       };
     }
 
-    // NSFW 点击揭示
-    if (!allowNSFW) {
-      const imgWrapper = document.getElementById("ai-draw-injected-img-wrapper");
-      const img = document.getElementById("ai-draw-injected-img");
-      const nsfwOverlay = document.getElementById("ai-draw-injected-nsfw");
-      if (imgWrapper) {
-        imgWrapper.onclick = (e) => {
-          e.stopPropagation();
-          const isBlurred = img.style.filter.includes("blur");
-          if (isBlurred) {
-            img.style.filter = "none";
-            if (nsfwOverlay) nsfwOverlay.style.display = "none";
-          } else {
-            img.style.filter = "blur(40px)";
-            if (nsfwOverlay) nsfwOverlay.style.display = "flex";
-          }
-        };
-      }
+    // 图片点击逻辑（NSFW揭示 + 全屏预览）
+    const imgWrapper = document.getElementById("ai-draw-injected-img-wrapper");
+    const img = document.getElementById("ai-draw-injected-img");
+    const nsfwOverlay = document.getElementById("ai-draw-injected-nsfw");
+    if (imgWrapper) {
+      imgWrapper.onclick = (e) => {
+        e.stopPropagation();
+        if (!allowNSFW && img.style.filter.includes("blur")) {
+          // 首次点击：移除模糊
+          img.style.filter = "none";
+          if (nsfwOverlay) nsfwOverlay.style.display = "none";
+        } else {
+          // 已揭示或无NSFW：全屏展示
+          const existing = document.getElementById("ai-draw-fullscreen");
+          if (existing) existing.remove();
+
+          const fsOverlay = document.createElement("div");
+          fsOverlay.id = "ai-draw-fullscreen";
+          fsOverlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 2147483647;
+            display: flex; align-items: center; justify-content: center;
+            cursor: zoom-out; padding: 20px; box-sizing: border-box;
+          `;
+
+          const fsImg = document.createElement("img");
+          fsImg.src = imageUrl;
+          fsImg.style.cssText = `
+            max-width: 95vw; max-height: 95vh; object-fit: contain;
+            border-radius: 8px; transition: transform 0.3s ease;
+            cursor: default; user-select: none;
+          `;
+
+          let scale = 1;
+          fsImg.addEventListener("wheel", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            scale += ev.deltaY > 0 ? -0.1 : 0.1;
+            scale = Math.max(0.3, Math.min(5, scale));
+            fsImg.style.transform = `scale(${scale})`;
+          }, { passive: false });
+
+          fsImg.addEventListener("dblclick", (ev) => {
+            ev.stopPropagation();
+            scale = 1;
+            fsImg.style.transform = "scale(1)";
+          });
+
+          fsImg.onclick = (ev) => ev.stopPropagation();
+          fsOverlay.onclick = () => fsOverlay.remove();
+
+          const onKey = (ev) => {
+            if (ev.key === "Escape") {
+              fsOverlay.remove();
+              document.removeEventListener("keydown", onKey);
+            }
+          };
+          document.addEventListener("keydown", onKey);
+
+          const hint = document.createElement("div");
+          hint.style.cssText = `
+            position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.6); font-size: 13px;
+            font-family: -apple-system, sans-serif; pointer-events: none;
+          `;
+          hint.textContent = "点击空白关闭 · 滚轮缩放 · 双击重置";
+
+          fsOverlay.appendChild(fsImg);
+          fsOverlay.appendChild(hint);
+          document.body.appendChild(fsOverlay);
+        }
+      };
     }
 
     // 复制图片按钮
