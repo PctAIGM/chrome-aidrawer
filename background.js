@@ -299,6 +299,7 @@ async function handleGenerateImage(
       customParams: provider.customParams || {},
       operationType: operationType,
       imageUrl: imageUrl,
+      negativePrompt: negativePrompt,
       // 异步模式参数
       asyncMode: provider.asyncMode,
       jobIdPath: provider.jobIdPath,
