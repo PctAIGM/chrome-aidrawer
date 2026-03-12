@@ -729,6 +729,31 @@
         </div>
     </div>
 
+    <!-- 导入预览模态框（支持部分导入） -->
+    <div id="importPreviewModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>📥 选择要导入的配置</h2>
+                <button class="close-btn" id="closeImportPreviewBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="importPreviewContent">
+                <!-- 动态生成配置项选择 -->
+            </div>
+            <div class="modal-footer">
+                <div class="import-mode-options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="importMergeMode" checked>
+                        <span>合并模式（保留现有配置，仅添加新项）</span>
+                    </label>
+                </div>
+                <div class="modal-footer-buttons">
+                    <button class="btn secondary" id="cancelImportPreviewBtn">取消</button>
+                    <button class="btn primary" id="confirmPartialImportBtn">导入选中项</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 模板管理弹窗 -->
     <div id="templateModal" class="modal" style="display: none;">
         <div class="modal-content">

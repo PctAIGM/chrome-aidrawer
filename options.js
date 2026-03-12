@@ -64,6 +64,9 @@ let editingUploadServiceId = null;
 let currentUploadServiceId = null;
 let editingTemplateId = null;
 
+// 待导入的配置数据（用于部分导入）
+let pendingImportData = null;
+
 async function loadSettings() {
   try {
     const response = await chrome.runtime.sendMessage({
@@ -414,6 +417,39 @@ function setupEventListeners() {
     modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         modal.style.display = "none";
+      }
+    });
+  }
+
+  // 导入预览模态框事件绑定
+  const closeImportPreviewBtn = document.getElementById("closeImportPreviewBtn");
+  const cancelImportPreviewBtn = document.getElementById("cancelImportPreviewBtn");
+  const confirmPartialImportBtn = document.getElementById("confirmPartialImportBtn");
+  const importPreviewModal = document.getElementById("importPreviewModal");
+
+  if (closeImportPreviewBtn) {
+    closeImportPreviewBtn.addEventListener("click", () => {
+      importPreviewModal.style.display = "none";
+      pendingImportData = null;
+    });
+  }
+
+  if (cancelImportPreviewBtn) {
+    cancelImportPreviewBtn.addEventListener("click", () => {
+      importPreviewModal.style.display = "none";
+      pendingImportData = null;
+    });
+  }
+
+  if (confirmPartialImportBtn) {
+    confirmPartialImportBtn.addEventListener("click", executePartialImport);
+  }
+
+  if (importPreviewModal) {
+    importPreviewModal.addEventListener("click", (e) => {
+      if (e.target === importPreviewModal) {
+        importPreviewModal.style.display = "none";
+        pendingImportData = null;
       }
     });
   }
@@ -1342,53 +1378,8 @@ async function importSettings(event) {
         throw new Error("无效的配置文件格式");
       }
 
-      // 简单校验
-      if (!Array.isArray(settings.providers)) {
-        throw new Error("配置文件缺少 providers 列表");
-      }
-
-      // 获取当前配置版本号
-      const { settings: currentSettings } = await chrome.storage.local.get("settings");
-      const currentVersion = currentSettings.configVersion || 1;
-      const importVersion = settings.configVersion || 1;
-
-      // 如果导入的配置版本号比当前大，给出提示
-      if (importVersion > currentVersion) {
-        const confirmForce = confirm(
-          `⚠️ 警告：导入的配置版本号（${importVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
-          `这可能意味着您的本地配置会丢失更新。\n\n` +
-          `是否继续强制导入？\n\n` +
-          `点击"确定"继续导入（本地配置将被覆盖）\n` +
-          `点击"取消"取消导入`
-        );
-        if (!confirmForce) {
-          showStatus("已取消导入", "info");
-          return;
-        }
-      }
-
-      // 弹出预览确认框
-      showConfigPreviewModal(settings, async () => {
-        try {
-          // 补全默认值
-          const newSettings = { ...defaultSettings, ...settings };
-          // 保持导入的版本号（不自动递增）
-          newSettings.configVersion = importVersion;
-
-          await chrome.runtime.sendMessage({
-            action: "saveSettings",
-            settings: newSettings,
-          });
-
-          showStatus(`配置已导入（版本号：${importVersion}），正在刷新...`, "success");
-          setTimeout(() => {
-            loadSettings(); // 重新加载设置
-          }, 1000);
-        } catch (error) {
-          console.error("导入保存失败:", error);
-          showStatus("导入保存失败: " + error.message, "error");
-        }
-      });
+      // 显示部分导入预览模态框
+      showImportPreviewModal(settings);
 
     } catch (error) {
       console.error("导入失败:", error);
@@ -1397,6 +1388,263 @@ async function importSettings(event) {
   };
   reader.readAsText(file);
   event.target.value = ""; // 重置 input
+}
+
+/**
+ * 显示导入预览模态框（支持部分导入）
+ * @param {Object} imported - 解析后的配置数据
+ */
+function showImportPreviewModal(imported) {
+  pendingImportData = imported;
+  const content = document.getElementById("importPreviewContent");
+
+  if (!content) {
+    // 如果找不到新模态框，回退到旧的导入方式
+    fallbackImport(imported);
+    return;
+  }
+
+  // 定义可导入的配置项
+  const configItems = [
+    { key: "providers", label: "API 服务商", icon: "🔌", countKey: "length" },
+    { key: "imageUploadServices", label: "图片上传服务", icon: "📤", countKey: "length" },
+    { key: "webdav", label: "WebDAV 配置", icon: "☁️", isGroup: true, 
+      keys: ["webdavUrl", "webdavUsername", "webdavPassword", "webdavFilename", "webdavAutoSync"] },
+    { key: "maxHistory", label: "最大历史记录数", icon: "📊", isSingle: true },
+    { key: "imagesPerRow", label: "每行图片数", icon: "🖼️", isSingle: true },
+    { key: "allowNSFW", label: "允许 NSFW 内容", icon: "🔞", isSingle: true },
+    { key: "useNotifications", label: "启用通知", icon: "🔔", isSingle: true },
+    { key: "securityKey", label: "安全密钥", icon: "🔐", isSingle: true, sensitive: true },
+    { key: "historyPasswordHash", label: "历史记录密码", icon: "🔒", isSingle: true, sensitive: true },
+  ];
+
+  let html = '<div class="import-preview-list">';
+
+  configItems.forEach(item => {
+    // 处理组类型配置项（如 WebDAV）
+    if (item.isGroup) {
+      // 检查组内是否有任何配置
+      const hasAnyValue = item.keys.some(key => {
+        const val = imported[key];
+        return val !== undefined && val !== null && val !== "";
+      });
+
+      // 显示预览
+      let preview = "";
+      if (hasAnyValue) {
+        const configuredCount = item.keys.filter(key => {
+          const val = imported[key];
+          return val !== undefined && val !== null && val !== "";
+        }).length;
+        preview = `${configuredCount} 项已配置`;
+      }
+
+      html += `
+        <div class="import-preview-item ${hasAnyValue ? "" : "disabled"}">
+          <label class="import-item-label">
+            <input type="checkbox" class="import-checkbox" data-key="${item.key}" data-keys="${item.keys.join(',')}" ${hasAnyValue ? "checked" : "disabled"}>
+            <span class="import-item-icon">${item.icon}</span>
+            <span class="import-item-text">
+              <span class="import-item-name">${item.label}</span>
+              ${hasAnyValue ? `<span class="import-item-preview">${escapeHtml(preview)}</span>` : '<span class="import-item-empty">无数据</span>'}
+            </span>
+          </label>
+        </div>
+      `;
+      return;
+    }
+
+    const value = imported[item.key];
+    const hasValue = value !== undefined && value !== null && value !== "";
+
+    // 对于数组类型，检查是否有内容
+    const hasContent = item.countKey ? (Array.isArray(value) && value.length > 0) : hasValue;
+
+    // 显示数量或值预览
+    let preview = "";
+    if (hasContent) {
+      if (item.countKey) {
+        preview = `${value.length} 项`;
+      } else if (item.sensitive) {
+        preview = "已设置";
+      } else if (typeof value === "boolean") {
+        preview = value ? "是" : "否";
+      } else {
+        preview = String(value).substring(0, 30) + (String(value).length > 30 ? "..." : "");
+      }
+    }
+
+    html += `
+      <div class="import-preview-item ${hasContent ? "" : "disabled"}">
+        <label class="import-item-label">
+          <input type="checkbox" class="import-checkbox" data-key="${item.key}" ${hasContent ? "checked" : "disabled"}>
+          <span class="import-item-icon">${item.icon}</span>
+          <span class="import-item-text">
+            <span class="import-item-name">${item.label}</span>
+            ${hasContent ? `<span class="import-item-preview">${escapeHtml(preview)}</span>` : '<span class="import-item-empty">无数据</span>'}
+          </span>
+        </label>
+      </div>
+    `;
+  });
+
+  html += "</div>";
+
+  content.innerHTML = html;
+
+  // 显示模态框
+  const modal = document.getElementById("importPreviewModal");
+  if (modal) {
+    modal.style.display = "flex";
+  }
+}
+
+/**
+ * 回退导入方式（当找不到新模态框时使用）
+ */
+async function fallbackImport(settings) {
+  // 简单校验
+  if (!Array.isArray(settings.providers)) {
+    showStatus("配置文件缺少 providers 列表", "error");
+    return;
+  }
+
+  // 获取当前配置版本号
+  const { settings: currentSettings } = await chrome.storage.local.get("settings");
+  const currentVersion = currentSettings.configVersion || 1;
+  const importVersion = settings.configVersion || 1;
+
+  // 如果导入的配置版本号比当前大，给出提示
+  if (importVersion > currentVersion) {
+    const confirmForce = confirm(
+      `⚠️ 警告：导入的配置版本号（${importVersion}）比当前版本号（${currentVersion}）更高！\n\n` +
+      `这可能意味着您的本地配置会丢失更新。\n\n` +
+      `是否继续强制导入？\n\n` +
+      `点击"确定"继续导入（本地配置将被覆盖）\n` +
+      `点击"取消"取消导入`
+    );
+    if (!confirmForce) {
+      showStatus("已取消导入", "info");
+      return;
+    }
+  }
+
+  // 弹出预览确认框
+  showConfigPreviewModal(settings, async () => {
+    try {
+      // 补全默认值
+      const newSettings = { ...defaultSettings, ...settings };
+      // 保持导入的版本号（不自动递增）
+      newSettings.configVersion = importVersion;
+
+      await chrome.runtime.sendMessage({
+        action: "saveSettings",
+        settings: newSettings,
+      });
+
+      showStatus(`配置已导入（版本号：${importVersion}），正在刷新...`, "success");
+      setTimeout(() => {
+        loadSettings(); // 重新加载设置
+      }, 1000);
+    } catch (error) {
+      console.error("导入保存失败:", error);
+      showStatus("导入保存失败: " + error.message, "error");
+    }
+  });
+}
+
+/**
+ * 执行部分导入
+ */
+async function executePartialImport() {
+  if (!pendingImportData) return;
+
+  const checkboxes = document.querySelectorAll(".import-checkbox");
+  const mergeMode = document.getElementById("importMergeMode")?.checked ?? true;
+  const selectedKeys = [];
+
+  checkboxes.forEach(cb => {
+    if (cb.checked && !cb.disabled) {
+      // 检查是否是组类型配置项
+      const keysStr = cb.dataset.keys;
+      if (keysStr) {
+        // 组类型：导入所有子键
+        const keys = keysStr.split(",");
+        keys.forEach(key => {
+          selectedKeys.push(key);
+        });
+      } else {
+        // 普通配置项
+        selectedKeys.push(cb.dataset.key);
+      }
+    }
+  });
+
+  if (selectedKeys.length === 0) {
+    showStatus("请至少选择一项配置进行导入", "error");
+    return;
+  }
+
+  try {
+    // 获取当前配置
+    const { settings: currentSettings } = await chrome.storage.local.get("settings");
+
+    // 执行导入
+    selectedKeys.forEach(key => {
+      const importedValue = pendingImportData[key];
+
+      // 对于数组类型的配置，支持合并模式
+      if (key === "providers" || key === "imageUploadServices") {
+        if (mergeMode && Array.isArray(currentSettings[key]) && Array.isArray(importedValue)) {
+          // 合并模式：保留现有配置，添加新项（根据 ID 去重）
+          const existingIds = new Set(currentSettings[key].map(item => item.id));
+          const newItems = importedValue.filter(item => !existingIds.has(item.id));
+          currentSettings[key] = [...currentSettings[key], ...newItems];
+        } else {
+          // 覆盖模式：直接替换
+          currentSettings[key] = importedValue;
+        }
+      } else {
+        // 非数组类型直接覆盖
+        currentSettings[key] = importedValue;
+      }
+    });
+
+    // 更新版本号
+    const importVersion = pendingImportData.configVersion || 1;
+    currentSettings.configVersion = importVersion;
+
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: currentSettings,
+    });
+
+    // 关闭模态框
+    const modal = document.getElementById("importPreviewModal");
+    if (modal) {
+      modal.style.display = "none";
+    }
+
+    pendingImportData = null;
+
+    showStatus(`已导入 ${selectedKeys.length} 项配置，正在刷新...`, "success");
+
+    setTimeout(() => {
+      loadSettings(); // 重新加载设置
+    }, 1000);
+  } catch (error) {
+    console.error("导入保存失败:", error);
+    showStatus("导入保存失败: " + error.message, "error");
+  }
+}
+
+/**
+ * HTML 转义函数
+ */
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 // ==================== WebDAV 同步功能 ====================
@@ -1718,27 +1966,8 @@ async function downloadFromWebDAV() {
         }
       }
 
-      // 弹出预览确认框
-      showConfigPreviewModal(settings, async () => {
-        try {
-          // 补全默认值
-          const newSettings = { ...defaultSettings, ...settings };
-          // 保持远程配置的版本号（不自动递增）
-          newSettings.configVersion = remoteVersion;
-
-          await chrome.runtime.sendMessage({
-            action: "saveSettings",
-            settings: newSettings,
-          });
-
-          showWebDAVStatus(`✅ 配置已从 WebDAV 下载并导入（版本号：${remoteVersion}）`, "success");
-          setTimeout(() => {
-            loadSettings(); // 重新加载设置
-          }, 1000);
-        } catch (error) {
-          showWebDAVStatus("❌ 导入失败: " + error.message, "error");
-        }
-      });
+      // 显示部分导入预览模态框
+      showImportPreviewModal(settings);
 
     } else {
       throw new Error(result.error || "下载失败");
