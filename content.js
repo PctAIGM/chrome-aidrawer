@@ -16,7 +16,7 @@ let formatErrorMessage, fileToBase64, blobToBase64;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("Content script received message:", message.action);
-  
+
   if (message.action === "getSelection") {
     const selection = window.getSelection().toString().trim();
     sendResponse({ selectionText: selection });
@@ -198,7 +198,7 @@ function showSharedImageUrl(imageUrl, prompt) {
   // 找到模态框中的按钮区域，插入到按钮上方
   const modal = document.querySelector("#ai-draw-modal-container .ai-draw-modal, #ai-draw-modal-container > div > div");
   const buttonArea = modal?.querySelector("div[style*='display: flex'][style*='gap: 12px'][style*='justify-content: center']");
-  
+
   if (buttonArea && buttonArea.parentNode) {
     buttonArea.parentNode.insertBefore(shareUrlDiv, buttonArea);
   }
@@ -208,12 +208,12 @@ function showSharedImageUrl(imageUrl, prompt) {
   if (copyBtn) {
     copyBtn.onclick = async () => {
       const originalText = copyBtn.textContent;
-      
+
       try {
         await navigator.clipboard.writeText(imageUrl);
         copyBtn.textContent = "✅ 已复制";
         copyBtn.style.background = "#22c55e";
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#48bb78";
@@ -222,7 +222,7 @@ function showSharedImageUrl(imageUrl, prompt) {
         console.error("复制分享链接失败:", error);
         copyBtn.textContent = "❌ 失败";
         copyBtn.style.background = "#f56565";
-        
+
         setTimeout(() => {
           copyBtn.textContent = originalText;
           copyBtn.style.background = "#48bb78";
@@ -333,6 +333,71 @@ function createModal({ title, content, prompt, buttons, debugData }) {
   return { container, modal };
 }
 
+// 全屏放大展示图片
+function showFullscreenImage(imageUrl) {
+  const existing = document.getElementById("ai-draw-fullscreen");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "ai-draw-fullscreen";
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.92); z-index: 99999999;
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out; padding: 20px; box-sizing: border-box;
+  `;
+
+  const img = document.createElement("img");
+  img.src = imageUrl;
+  img.style.cssText = `
+    max-width: 95vw; max-height: 95vh; object-fit: contain;
+    border-radius: 8px; transition: transform 0.3s ease;
+    cursor: default; user-select: none;
+  `;
+
+  let scale = 1;
+  img.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    scale += e.deltaY > 0 ? -0.1 : 0.1;
+    scale = Math.max(0.3, Math.min(5, scale));
+    img.style.transform = `scale(${scale})`;
+  }, { passive: false });
+
+  // 双击重置缩放
+  img.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    scale = 1;
+    img.style.transform = "scale(1)";
+  });
+
+  // 点击图片不关闭
+  img.onclick = (e) => e.stopPropagation();
+
+  // 点击背景关闭 / ESC关闭
+  overlay.onclick = () => overlay.remove();
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    }
+  };
+  document.addEventListener("keydown", onKey);
+
+  // 关闭提示
+  const hint = document.createElement("div");
+  hint.style.cssText = `
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.6); font-size: 13px;
+    font-family: -apple-system, sans-serif; pointer-events: none;
+  `;
+  hint.textContent = "点击空白关闭 · 滚轮缩放 · 双击重置";
+
+  overlay.appendChild(img);
+  overlay.appendChild(hint);
+  document.body.appendChild(overlay);
+}
+
 // 在当前页面显示生成结果的模态框
 async function showResultModal(imageUrl, prompt, debugData) {
   const { settings } = await chrome.storage.local.get("settings");
@@ -343,14 +408,14 @@ async function showResultModal(imageUrl, prompt, debugData) {
     { id: "ai-draw-download", text: "下载", class: "secondary" },
     { id: "ai-draw-close", text: "关闭", class: "secondary" },
   ];
-  
+
   // 检查是否有上传服务，添加分享按钮
   const uploadServices = settings?.imageUploadServices || [];
   const hasActiveUploadService = uploadServices.some(service => service.isActive);
   if (hasActiveUploadService) {
     buttons.splice(2, 0, { id: "ai-draw-share", text: "🔗", class: "secondary", title: "分享到相册" });
   }
-  
+
   if (debugData) {
     buttons.unshift({
       id: "ai-draw-debug",
@@ -397,21 +462,21 @@ async function showResultModal(imageUrl, prompt, debugData) {
     debugData: debugData,
   });
 
-  // 绑定图片点击揭示逻辑
+  // 绑定图片点击逻辑
   const wrapper = document.getElementById("ai-draw-image-wrapper");
   const img = document.getElementById("ai-draw-result-img");
-  const overlay = document.getElementById("ai-draw-nsfw-overlay");
+  const nsfwOverlay = document.getElementById("ai-draw-nsfw-overlay");
 
-  if (wrapper && !allowNSFW) {
+  if (wrapper) {
     wrapper.onclick = (e) => {
       e.stopPropagation();
-      const isBlurred = img.style.filter.includes("blur");
-      if (isBlurred) {
+      if (!allowNSFW && img.style.filter.includes("blur")) {
+        // 首次点击：移除模糊
         img.style.filter = "none";
-        if (overlay) overlay.style.display = "none";
+        if (nsfwOverlay) nsfwOverlay.style.display = "none";
       } else {
-        img.style.filter = "blur(40px)";
-        if (overlay) overlay.style.display = "flex";
+        // 已揭示或无NSFW：全屏展示
+        showFullscreenImage(imageUrl);
       }
     };
   }
@@ -482,7 +547,7 @@ async function showResultModal(imageUrl, prompt, debugData) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       // 显示下载提示
       const btn = downloadBtn;
       const originalText = btn.textContent;
@@ -511,10 +576,10 @@ async function showResultModal(imageUrl, prompt, debugData) {
           btn.textContent = "✅";
           btn.style.background = "#48bb78";
           btn.style.color = "white";
-          
+
           // 显示分享后的图片URL
           showSharedImageUrl(res.imageUrl, prompt);
-          
+
           setTimeout(() => {
             btn.textContent = originalText;
             btn.style.background = "";
@@ -633,7 +698,7 @@ async function downloadImageAsBase64(imageUrl) {
 // 显示改图对话框
 function showEditDialog(imageUrl, providerId, providerName, warning) {
   console.log("showEditDialog called with:", { imageUrl, providerId, providerName, warning });
-  
+
   // 移除已有的对话框
   const existing = document.getElementById("ai-draw-edit-modal");
   if (existing) existing.remove();
@@ -673,7 +738,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     `
     : '';
 
-  const imageSelectHtml = !imageUrl 
+  const imageSelectHtml = !imageUrl
     ? `
       <div id="ai-edit-image-select" style="margin-bottom: 16px;">
         <label style="display: block; color: #4a5568; font-size: 14px; font-weight: 500; margin-bottom: 8px;">选择图片</label>
@@ -763,7 +828,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     selectBtn.onclick = () => {
       fileInput.click();
     };
-    
+
     fileInput.onchange = () => {
       if (fileInput.files[0]) {
         handleLocalImageUpload();
@@ -798,7 +863,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     try {
       // 将文件转换为base64
       const base64 = await fileToBase64(file);
-      
+
       const result = await chrome.runtime.sendMessage({
         action: 'uploadImage',
         imageData: base64,
@@ -807,10 +872,10 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
 
       if (result.success) {
         currentImageUrl = result.imageUrl;
-        
+
         // 更新预览图片
         updateImagePreview(currentImageUrl);
-        
+
         // 直接显示URL
         showImageUrlInEditDialog(result.imageUrl);
       } else {
@@ -831,7 +896,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
   // 处理当前图片上传到图床
   async function handleCurrentImageUpload() {
     console.log("handleCurrentImageUpload called, currentImageUrl:", currentImageUrl);
-    
+
     if (!currentImageUrl) {
       showUploadStatus('没有可上传的图片', 'error');
       return;
@@ -845,7 +910,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     try {
       // 获取当前图片的base64数据
       let imageData;
-      
+
       if (currentImageUrl.startsWith('data:')) {
         // 如果已经是base64格式，直接使用
         console.log("Using base64 image data directly");
@@ -860,16 +925,16 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
           console.error("图片下载失败:", downloadError);
           // 下载失败时，提示用户选择本地文件
           showUploadStatus('图片下载失败，可能是防盗链限制。请点击下方按钮选择本地图片文件上传', 'error');
-          
+
           // 创建文件选择按钮
           const fileInputBtn = document.createElement('button');
           fileInputBtn.textContent = '📁 选择本地图片';
           fileInputBtn.style.cssText = 'margin-top: 10px; padding: 8px 16px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 14px; cursor: pointer;';
-          
+
           const statusDiv = modal.querySelector('#ai-edit-upload-status');
           if (statusDiv && !statusDiv.querySelector('input[type="file"]')) {
             statusDiv.appendChild(fileInputBtn);
-            
+
             fileInputBtn.onclick = () => {
               const fileInput = document.createElement('input');
               fileInput.type = 'file';
@@ -880,14 +945,14 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
                   reuploadBtn.disabled = true;
                   reuploadBtn.textContent = '上传中...';
                   hideUploadStatus();
-                  
+
                   try {
                     // 将文件转换为 base64
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                       try {
                         imageData = event.target.result;
-                        
+
                         // 上传图片
                         const result = await chrome.runtime.sendMessage({
                           action: 'uploadImage',
@@ -922,13 +987,13 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
               fileInput.click();
             };
           }
-          
+
           reuploadBtn.disabled = false;
           reuploadBtn.textContent = originalText;
           return;
         }
       }
-      
+
       console.log("Sending upload request to background script");
       const result = await chrome.runtime.sendMessage({
         action: 'uploadImage',
@@ -939,10 +1004,10 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       console.log("Upload result:", result);
       if (result.success) {
         currentImageUrl = result.imageUrl;
-        
+
         // 更新预览图片
         updateImagePreview(currentImageUrl);
-        
+
         // 直接显示URL
         showImageUrlInEditDialog(result.imageUrl);
       } else {
@@ -1025,7 +1090,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       uploadStatus.className = type === 'error' ? 'error-status' : 'success-status';
       uploadStatus.style.cssText = `
         display: block; margin-top: 8px; padding: 8px; border-radius: 6px; font-size: 14px;
-        ${type === 'error' 
+        ${type === 'error'
           ? 'background: #fff5f5; border: 1px solid #feb2b2; color: #c53030;'
           : 'background: #f0fff4; border: 1px solid #9ae6b4; color: #2f855a;'
         }
@@ -1072,16 +1137,16 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       copyBtn.onmouseout = () => {
         copyBtn.style.background = "transparent";
       };
-      
+
       copyBtn.onclick = async () => {
         const originalText = copyBtn.textContent;
-        
+
         try {
           await navigator.clipboard.writeText(imageUrl);
           copyBtn.textContent = "✓";
           copyBtn.style.color = "#16a34a";
           copyBtn.style.borderColor = "#86efac";
-          
+
           setTimeout(() => {
             copyBtn.textContent = originalText;
           }, 1500);
@@ -1090,7 +1155,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
           copyBtn.textContent = "✗";
           copyBtn.style.color = "#dc2626";
           copyBtn.style.borderColor = "#fca5a5";
-          
+
           setTimeout(() => {
             copyBtn.textContent = originalText;
             copyBtn.style.color = "#16a34a";
@@ -1151,33 +1216,33 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
           debugData = request.debugData;
           debugBtn.style.display = "inline-block";
         }
-        
+
         let errorMessage = request.error || "改图失败";
-        
+
         // 检查是否是图片访问相关的错误，提供更有用的建议
-        if (errorMessage.includes("无法下载图片") || 
-            errorMessage.includes("无法访问图片") || 
-            errorMessage.includes("跨域") || 
-            errorMessage.includes("CORS") ||
-            errorMessage.includes("安全策略")) {
-          
+        if (errorMessage.includes("无法下载图片") ||
+          errorMessage.includes("无法访问图片") ||
+          errorMessage.includes("跨域") ||
+          errorMessage.includes("CORS") ||
+          errorMessage.includes("安全策略")) {
+
           // 检查是否有上传服务
-          chrome.storage.local.get("settings").then(({settings}) => {
+          chrome.storage.local.get("settings").then(({ settings }) => {
             const uploadServices = settings?.imageUploadServices || [];
             const hasUploadService = uploadServices.some(service => service.isActive);
-            
+
             if (hasUploadService) {
               errorMessage += "\n\n💡 建议解决方案：\n1. 使用下方的\"上传到图床\"功能\n2. 或选择本地图片文件进行改图";
             } else {
               errorMessage += "\n\n💡 建议解决方案：\n1. 在设置中配置图片上传服务\n2. 或右键保存图片到本地后重新上传";
             }
-            
+
             errorDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
           });
         } else {
           errorDiv.textContent = errorMessage;
         }
-        
+
         errorDiv.style.display = "block";
         submitBtn.disabled = false;
         submitBtn.textContent = "开始改图";
