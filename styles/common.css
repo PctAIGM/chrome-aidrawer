@@ -430,11 +430,16 @@ label {
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     z-index: 1000;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
+}
+
+/* 当模态框显示时使用 flex 布局 */
+.modal.show {
+    display: flex;
 }
 
 .modal-content {
