@@ -59,11 +59,14 @@ function sanitizeRequestHeaders(headers) {
  * 保存请求记录（带配额处理）
  */
 async function saveRequestRecord(record) {
+  console.log("[请求记录] 保存记录:", record.id, record.status);
   try {
     const { requests = [] } = await chrome.storage.local.get("requests");
     requests.unshift(record);
     await chrome.storage.local.set({ requests });
+    console.log("[请求记录] 保存成功，当前记录数:", requests.length);
   } catch (error) {
+    console.error("[请求记录] 保存失败:", error);
     if (error.message && error.message.includes("quota")) {
       console.warn("请求记录存储配额超限，尝试清理...");
       await handleStorageQuotaExceeded();
@@ -74,8 +77,6 @@ async function saveRequestRecord(record) {
       } catch (retryError) {
         console.error("重试保存失败:", retryError);
       }
-    } else {
-      console.error("保存请求记录失败:", error);
     }
   }
 }
@@ -84,15 +85,21 @@ async function saveRequestRecord(record) {
  * 更新请求记录
  */
 async function updateRequestRecord(id, updates) {
+  console.log("[请求记录] 更新记录:", id, updates.status);
   try {
     const { requests = [] } = await chrome.storage.local.get("requests");
+    console.log("[请求记录] 当前记录数:", requests.length);
     const index = requests.findIndex(r => r.id === id);
+    console.log("[请求记录] 找到记录索引:", index);
     if (index !== -1) {
       requests[index] = { ...requests[index], ...updates };
       await chrome.storage.local.set({ requests });
+      console.log("[请求记录] 更新成功");
+    } else {
+      console.warn("[请求记录] 未找到记录:", id);
     }
   } catch (error) {
-    console.error("更新请求记录失败:", error);
+    console.error("[请求记录] 更新失败:", error);
   }
 }
 
