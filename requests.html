@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI画图助手 - 请求管理</title>
+    <link rel="stylesheet" href="styles/common.css" />
+    <link rel="stylesheet" href="styles/requests.css" />
+  </head>
+
+  <body>
+    <div class="container">
+      <header>
+        <div class="header-content">
+          <div class="header-left">
+            <h1>AI画图助手</h1>
+            <p class="subtitle">请求管理</p>
+          </div>
+          <div class="header-right">
+            <span id="requestCount">0 条记录</span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div class="toolbar">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-status="all">全部</button>
+            <button class="filter-tab" data-status="pending">
+              <span class="status-dot pending"></span>进行中
+            </button>
+            <button class="filter-tab" data-status="success">
+              <span class="status-dot success"></span>成功
+            </button>
+            <button class="filter-tab" data-status="failed">
+              <span class="status-dot failed"></span>失败
+            </button>
+          </div>
+          <div class="search-box">
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="搜索提示词或服务商..."
+            />
+          </div>
+          <div class="toolbar-actions">
+            <button id="refreshBtn" class="btn secondary">刷新</button>
+            <button id="clearAllBtn" class="btn danger">清空全部</button>
+            <a href="history.html" class="btn secondary">历史记录</a>
+          </div>
+        </div>
+
+        <div id="requestList" class="request-list">
+          <div class="loading">加载中...</div>
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none">
+          <div class="empty-icon">📋</div>
+          <p>暂无请求记录</p>
+          <p class="hint">
+            所有 API 请求都会记录在这里，包括成功和失败的请求
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <!-- 请求详情模态框 -->
+    <div id="detailModal" class="modal">
+      <div class="modal-content detail-modal">
+        <span class="modal-close">&times;</span>
+        <div class="detail-header">
+          <span id="detailStatus" class="status-badge"></span>
+          <span id="detailOperationType"></span>
+          <span id="detailProvider"></span>
+          <span id="detailDuration"></span>
+        </div>
+        
+        <div class="detail-sections">
+          <div class="detail-section">
+            <h3>📋 请求参数</h3>
+            <div id="detailRequest" class="detail-content"></div>
+          </div>
+          
+          <div class="detail-section">
+            <h3>⏱️ 耗时统计</h3>
+            <div id="detailTiming" class="detail-content"></div>
+          </div>
+          
+          <div class="detail-section">
+            <h3>📤 请求详情</h3>
+            <div id="detailDebugRequest" class="detail-content code-block"></div>
+          </div>
+          
+          <div class="detail-section">
+            <h3>📥 响应详情</h3>
+            <div id="detailDebugResponse" class="detail-content code-block"></div>
+          </div>
+        </div>
+        
+        <div class="detail-actions">
+          <button id="copyDebugBtn" class="btn secondary">复制调试信息</button>
+          <button id="exportJsonBtn" class="btn secondary">导出JSON</button>
+          <button id="retryBtn" class="btn primary" style="display: none;">重试</button>
+          <button id="closeDetailBtn" class="btn secondary">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="requests.js"></script>
+  </body>
+</html>

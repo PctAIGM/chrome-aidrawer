@@ -1,0 +1,351 @@
+/* AI画图助手 - 请求管理页面样式 */
+
+/* ==================== 页面布局 ==================== */
+.container {
+  max-width: 1000px;
+}
+
+header {
+  margin-bottom: 24px;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.header-right {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ==================== 工具栏 ==================== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-tab {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color-medium);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-tab:hover {
+  border-color: var(--accent-color);
+  background: var(--accent-light);
+}
+
+.filter-tab.active {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.pending {
+  background: #667eea;
+  animation: pulse 1.5s infinite;
+}
+
+.status-dot.success {
+  background: #48bb78;
+}
+
+.status-dot.failed {
+  background: #f56565;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.search-box input {
+  width: 100%;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==================== 请求列表 ==================== */
+.request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.request-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  transition: var(--transition);
+}
+
+.request-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-color-strong);
+}
+
+.request-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.request-status {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.request-status.pending {
+  color: #667eea;
+}
+
+.request-status.success {
+  color: #48bb78;
+}
+
+.request-status.failed {
+  color: #f56565;
+}
+
+.request-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.request-meta .provider-tag {
+  font-size: 11px;
+}
+
+.request-duration {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.request-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.request-prompt {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.request-error {
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #c53030;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.request-actions .btn {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+/* ==================== 空状态 ==================== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.empty-state .hint {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+/* ==================== 详情模态框 ==================== */
+.detail-modal {
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.status-badge {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-round);
+}
+
+.status-badge.pending {
+  background: #ebf4ff;
+  color: #667eea;
+}
+
+.status-badge.success {
+  background: #f0fff4;
+  color: #48bb78;
+}
+
+.status-badge.failed {
+  background: #fff5f5;
+  color: #f56565;
+}
+
+.detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.detail-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.detail-content {
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  line-height: 1.6;
+}
+
+.detail-content.code-block {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ==================== 加载状态 ==================== */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-tertiary);
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filter-tabs {
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  
+  .search-box {
+    max-width: none;
+  }
+  
+  .toolbar-actions {
+    flex-wrap: wrap;
+  }
+  
+  .detail-header {
+    flex-wrap: wrap;
+  }
+  
+  .detail-actions {
+    flex-wrap: wrap;
+  }
+}
