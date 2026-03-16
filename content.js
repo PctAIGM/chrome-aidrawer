@@ -21,11 +21,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const selection = window.getSelection().toString().trim();
     sendResponse({ selectionText: selection });
   } else if (message.action === "imageLoading") {
-    showMiniStatus("loading", { prompt: message.prompt });
+    showMiniStatus("loading", { prompt: message.prompt, elapsed: message.elapsed });
   } else if (message.action === "imageLoadingUpdate") {
     showMiniStatus("loading", {
       prompt: message.prompt,
       status: message.status,
+      elapsed: message.elapsed,
     });
   } else if (message.action === "imageError") {
     showMiniStatus("error", {
@@ -77,18 +78,57 @@ function showMiniStatus(state, data) {
   "></div>
   <style>@keyframes ai-draw-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>`;
 
+  // 状态映射：状态文本 -> 显示文本和颜色
+  const statusMap = {
+    "请求发送中": { text: "📤 请求发送中...", color: "#667eea" },
+    "等待响应": { text: "⏳ 等待响应...", color: "#f6ad55" },
+    "结果已接收": { text: "✅ 结果已接收", color: "#48bb78" },
+    "图片下载中": { text: "📥 图片下载中...", color: "#4299e1" },
+    "等待异步返回": { text: "🔄 等待异步返回...", color: "#9f7aea" },
+  };
+
+  // 处理轮询状态（格式：状态文本 (轮询 x/y)）
+  function parsePollingStatus(status) {
+    const match = status?.match(/^(.+?)\s*\(轮询\s*\d+\/\d+\)$/);
+    if (match) {
+      return {
+        text: `🔄 ${match[1]} (轮询中)`,
+        color: "#9f7aea"
+      };
+    }
+    return null;
+  }
+
+  // 格式化耗时显示
+  function formatElapsed(elapsed) {
+    if (elapsed === undefined || elapsed === null) return "";
+    return ` (${elapsed}s)`;
+  }
+
   if (state === "loading") {
-    const statusText = data.status
-      ? `AI 正在创作中... (${data.status})`
-      : "AI 正在创作中...";
+    // 获取状态信息
+    let statusInfo = data.status ? statusMap[data.status] : null;
+    
+    // 尝试解析轮询状态
+    if (!statusInfo && data.status) {
+      statusInfo = parsePollingStatus(data.status);
+    }
+    
+    const elapsedText = formatElapsed(data.elapsed);
+    const statusText = statusInfo 
+      ? statusInfo.text + elapsedText
+      : (data.status ? `AI 正在创作中... (${data.status})${elapsedText}` : "AI 正在创作中...");
+    const statusColor = statusInfo ? statusInfo.color : "#4a5568";
+    
     // 如果是更新状态且容器已存在，只更新文字
     const existingText = container.querySelector(".status-text");
     if (existingText && container.innerHTML.includes("ai-draw-mini-spinner")) {
       existingText.textContent = statusText;
+      existingText.style.color = statusColor;
     } else {
       container.innerHTML = `
           ${spinnerHtml}
-          <span class="status-text" style="font-size: 14px; color: #4a5568; font-weight: 500;">${statusText}</span>
+          <span class="status-text" style="font-size: 14px; color: ${statusColor}; font-weight: 500;">${statusText}</span>
           <div id="ai-draw-mini-close" style="cursor: pointer; padding: 4px; color: #a0aec0; line-height: 1;">&times;</div>
         `;
     }

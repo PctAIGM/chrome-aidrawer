@@ -301,9 +301,9 @@ async function handleGenerateImage(
   if (tabId) {
     sendMessageToTab(
       tabId,
-      { action: "imageLoading", prompt: prompt },
+      { action: "imageLoading", prompt: prompt, elapsed: 0 },
       showInjectedLoadingStatus,
-      [prompt]
+      [prompt, 0]
     );
   }
 
@@ -652,6 +652,26 @@ async function generateWithCustomAPI(prompt, config) {
   }
 
   let responseData = null;
+  const startTime = Date.now(); // 记录开始时间
+
+  // 辅助函数：发送状态更新
+  async function sendStatusUpdate(status) {
+    try {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab) {
+        chrome.tabs.sendMessage(activeTab.id, {
+          action: "imageLoadingUpdate",
+          prompt: prompt,
+          status: status,
+          elapsed: elapsed,
+        }).catch(() => { });
+      }
+    } catch (e) { }
+  }
+
+  // 发送状态更新：请求发送中
+  await sendStatusUpdate("请求发送中");
 
   // 1. 发送初始请求
   const fetchOptions = {
@@ -661,6 +681,9 @@ async function generateWithCustomAPI(prompt, config) {
   };
 
   const response = await fetch(endpoint, fetchOptions);
+
+  // 发送状态更新：等待响应
+  await sendStatusUpdate("等待响应");
 
   if (!response.ok) {
     let errorMsg = `HTTP ${response.status}`;
@@ -686,6 +709,8 @@ async function generateWithCustomAPI(prompt, config) {
   // 2. 如果是异步模式，进入轮询流程
   if (asyncMode) {
     console.log("进入异步轮询模式...");
+    // 发送状态更新：等待异步返回
+    await sendStatusUpdate("等待异步返回");
     const jobId = getValueByPath(responseData, jobIdPath);
     if (!jobId) {
       const err = new Error(`无法获取任务ID，路径: ${jobIdPath}`);
@@ -728,6 +753,7 @@ async function generateWithCustomAPI(prompt, config) {
 
       // 4. 发送进度通知
       try {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
         const [activeTab] = await chrome.tabs.query({
           active: true,
           currentWindow: true,
@@ -738,6 +764,7 @@ async function generateWithCustomAPI(prompt, config) {
               action: "imageLoadingUpdate",
               prompt: prompt,
               status: `${status} (轮询 ${attempts}/${maxAttempts})`,
+              elapsed: elapsed,
             })
             .catch(() => { });
         }
@@ -790,7 +817,12 @@ async function generateWithCustomAPI(prompt, config) {
     throw err;
   }
 
+  // 发送状态更新：结果已接收
+  await sendStatusUpdate("结果已接收");
+
   if (finalImageUrl.startsWith("http")) {
+    // 发送状态更新：图片下载中
+    await sendStatusUpdate("图片下载中");
     finalImageUrl = await downloadImageAsBase64(finalImageUrl);
   }
 
@@ -1031,7 +1063,7 @@ async function showNotification(message, type = "info") {
 }
 
 // 注入到页面的加载状态函数
-function showInjectedLoadingStatus(prompt) {
+function showInjectedLoadingStatus(prompt, elapsed = 0) {
   let container = document.getElementById("ai-draw-mini-status");
   if (!container) {
     container = document.createElement("div");
@@ -1054,9 +1086,10 @@ function showInjectedLoadingStatus(prompt) {
     document.head.appendChild(style);
   }
 
+  const elapsedText = elapsed > 0 ? ` (${elapsed}s)` : "";
   container.innerHTML = `
     <div style="width: 20px; height: 20px; border: 2.5px solid #f3f3f3; border-top: 2.5px solid #667eea; border-radius: 50%; animation: ai-draw-spin 0.8s linear infinite;"></div>
-    <span style="font-size: 14px; color: #4a5568; font-weight: 500;">AI 正在创作中...</span>
+    <span style="font-size: 14px; color: #4a5568; font-weight: 500;">AI 正在创作中...${elapsedText}</span>
     <div id="ai-draw-mini-close" style="cursor: pointer; padding: 4px; color: #a0aec0; line-height: 1;">&times;</div>
   `;
 
