@@ -24,6 +24,24 @@ let uploadedImageUrl = null; // 存储上传后的图片URL
 
 async function loadSettings() {
   try {
+    // 解析 URL 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const prefillPrompt = urlParams.get("prompt");
+    const prefillNegativePrompt = urlParams.get("negativePrompt");
+    const prefillProviderId = urlParams.get("providerId");
+    const prefillOperationType = urlParams.get("operationType");
+    
+    // 如果有预填充参数，填入输入框
+    if (prefillPrompt) {
+      document.getElementById("promptInput").value = prefillPrompt;
+    }
+    if (prefillNegativePrompt) {
+      const negativePromptInput = document.getElementById("negativePromptInput");
+      if (negativePromptInput) {
+        negativePromptInput.value = prefillNegativePrompt;
+      }
+    }
+    
     const response = await chrome.runtime.sendMessage({
       action: "getSettings",
     });
@@ -50,7 +68,12 @@ async function loadSettings() {
       option.dataset.serviceType = p.serviceType || "generate";
       const typeIcon = p.serviceType === "edit" ? "✏️" : "🎨";
       option.textContent = `${typeIcon} ${p.name}`;
-      if (p.isCurrent) option.selected = true;
+      // 优先选择 URL 参数中指定的服务商
+      if (prefillProviderId && p.id === prefillProviderId) {
+        option.selected = true;
+      } else if (!prefillProviderId && p.isCurrent) {
+        option.selected = true;
+      }
       select.appendChild(option);
     });
 
