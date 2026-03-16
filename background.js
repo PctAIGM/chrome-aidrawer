@@ -399,40 +399,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
-// 监听扩展内部消息
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "getSettings") {
-    chrome.storage.local.get("settings").then((res) => {
-      sendResponse(res.settings || DEFAULT_SETTINGS);
-    });
-    return true;
-  } else if (message.action === "saveSettings") {
-    chrome.storage.local.set({ settings: message.settings }).then(() => {
-      updateContextMenu();
-      sendResponse({ success: true });
-    });
-    return true;
-  } else if (message.action === "getRequests") {
-    // 获取请求记录
-    chrome.storage.local.get("requests").then((res) => {
-      sendResponse({ requests: res.requests || [] });
-    });
-    return true;
-  } else if (message.action === "deleteRequest") {
-    // 删除单条请求记录
-    deleteRequestRecord(message.id).then(() => {
-      sendResponse({ success: true });
-    });
-    return true;
-  } else if (message.action === "clearRequests") {
-    // 清空所有请求记录
-    chrome.storage.local.set({ requests: [] }).then(() => {
-      sendResponse({ success: true });
-    });
-    return true;
-
-  }
-});
+// 监听扩展内部消息（由第1706行的完整监听器处理）
 
 // 向标签页发送消息的通用辅助函数
 // 首先尝试直接发消息（content.js 已加载时成功），
@@ -1774,6 +1741,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+  // ========== 请求管理相关消息 ==========
+  if (message.action === "getRequests") {
+    chrome.storage.local.get("requests").then((res) => {
+      sendResponse({ requests: res.requests || [] });
+    });
+    return true;
+  }
+  if (message.action === "deleteRequest") {
+    deleteRequestRecord(message.id).then(() => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+  if (message.action === "clearRequests") {
+    chrome.storage.local.set({ requests: [] }).then(() => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+  // ========== 生成图片相关消息 ==========
   if (message.action === "generateImage") {
     (async () => {
       const provider = await getCurrentProvider();
