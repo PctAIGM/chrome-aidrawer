@@ -120,12 +120,24 @@ async function cleanupOldRequests() {
     const { settings } = await chrome.storage.local.get("settings");
     const retentionDays = settings?.requestRetentionDays || 7;
     const { requests = [] } = await chrome.storage.local.get("requests");
+    
+    if (requests.length === 0) {
+      console.log("[请求记录] 没有记录需要清理");
+      return;
+    }
+    
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
     const filtered = requests.filter(r => new Date(r.timing.startedAt) >= cutoffDate);
+    
+    const removedCount = requests.length - filtered.length;
+    if (removedCount > 0) {
+      console.log(`[请求记录] 清理 ${removedCount} 条过期记录（保留 ${retentionDays} 天）`);
+    }
+    
     await chrome.storage.local.set({ requests: filtered });
   } catch (error) {
-    console.error("清理过期请求记录失败:", error);
+    console.error("[请求记录] 清理过期记录失败:", error);
   }
 }
 
