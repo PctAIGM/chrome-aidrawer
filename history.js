@@ -509,6 +509,12 @@ function updateExportButton() {
     shareBtn.textContent = `分享选中 (${count})`;
     shareBtn.disabled = count === 0;
   }
+
+  const deleteBtn = document.getElementById("deleteSelectedBtn");
+  if (deleteBtn) {
+    deleteBtn.textContent = `删除选中 (${count})`;
+    deleteBtn.disabled = count === 0;
+  }
 }
 
 function updateSelectAllCheckbox() {
@@ -966,6 +972,55 @@ async function clearAllHistory() {
   }
 }
 
+// 批量删除选中的记录
+async function deleteSelectedItems() {
+  if (selectedItems.size === 0) {
+    showNotification("请先选择要删除的记录", "error");
+    return;
+  }
+
+  if (!confirm(`确定要删除选中的 ${selectedItems.size} 条记录吗？此操作不可恢复。`)) return;
+
+  const deleteBtn = document.getElementById("deleteSelectedBtn");
+  const originalText = deleteBtn.textContent;
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = "删除中...";
+
+  let successCount = 0;
+  let failCount = 0;
+
+  // 复制选中项ID，因为selectedItems会在循环中被修改
+  const idsToDelete = [...selectedItems];
+
+  for (let i = 0; i < idsToDelete.length; i++) {
+    const id = idsToDelete[i];
+    deleteBtn.textContent = `删除中 (${i + 1}/${idsToDelete.length})`;
+
+    try {
+      await chrome.runtime.sendMessage({ action: "deleteHistoryItem", id });
+      historyData = historyData.filter((item) => item.id !== id);
+      filteredData = filteredData.filter((item) => item.id !== id);
+      selectedItems.delete(id);
+      successCount++;
+    } catch (error) {
+      console.error(`删除记录失败 (${id}):`, error);
+      failCount++;
+    }
+  }
+
+  renderGallery();
+
+  if (failCount === 0) {
+    showNotification(`成功删除 ${successCount} 条记录`, "success");
+  } else {
+    showNotification(`删除完成：成功 ${successCount} 条，失败 ${failCount} 条`, "success");
+  }
+
+  deleteBtn.disabled = selectedItems.size === 0;
+  deleteBtn.textContent = originalText;
+  updateExportButton();
+}
+
 function searchHistory(query, operationType = "all") {
   let result = [...historyData];
 
@@ -1063,6 +1118,12 @@ function setupEventListeners() {
   const shareSelectedBtn = document.getElementById("shareSelectedBtn");
   if (shareSelectedBtn) {
     shareSelectedBtn.addEventListener("click", shareSelectedImages);
+  }
+
+  // 批量删除按钮
+  const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener("click", deleteSelectedItems);
   }
 
   // NSFW开关
