@@ -92,7 +92,12 @@ async function updateRequestRecord(id, updates) {
     const index = requests.findIndex(r => r.id === id);
     console.log("[请求记录] 找到记录索引:", index);
     if (index !== -1) {
-      requests[index] = { ...requests[index], ...updates };
+      // 深度合并 timing 对象，避免丢失 startedAt
+      const updatedRecord = { ...requests[index], ...updates };
+      if (updates.timing && requests[index].timing) {
+        updatedRecord.timing = { ...requests[index].timing, ...updates.timing };
+      }
+      requests[index] = updatedRecord;
       await chrome.storage.local.set({ requests });
       console.log("[请求记录] 更新成功");
     } else {
@@ -128,7 +133,15 @@ async function cleanupOldRequests() {
     
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-    const filtered = requests.filter(r => new Date(r.timing.startedAt) >= cutoffDate);
+    
+    const filtered = requests.filter(r => {
+      // 如果没有 startedAt，保留记录（不清理）
+      if (!r.timing?.startedAt) {
+        console.warn("[请求记录] 记录缺少 startedAt:", r.id);
+        return true;
+      }
+      return new Date(r.timing.startedAt) >= cutoffDate;
+    });
     
     const removedCount = requests.length - filtered.length;
     if (removedCount > 0) {
