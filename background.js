@@ -1,5 +1,172 @@
 // AI画图助手 - 后台脚本
 
+// ==================== 请求记录工具函数 ====================
+
+/**
+ * 创建请求记录
+ */
+function createRequestRecord(params) {
+  const { prompt, negativePrompt, provider, imageUrl, operationType, endpoint } = params;
+  
+  return {
+    id: `req_${Date.now()}`,
+    status: "pending",
+    request: {
+      prompt: prompt || "",
+      negativePrompt: negativePrompt || "",
+      operationType: operationType || "generate",
+      providerId: provider?.id || "",
+      providerName: provider?.name || "未知",
+      imageUrl: imageUrl || null,
+    },
+    response: {
+      imageUrl: null,
+      responseData: null,
+      error: null,
+    },
+    debug: {
+      requestBody: null,
+      requestHeaders: {},
+      responseData: null,
+      endpoint: endpoint || "",
+    },
+    timing: {
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      duration: null,
+    },
+  };
+}
+
+/**
+ * 脱敏请求头
+ */
+function sanitizeRequestHeaders(headers) {
+  const sanitized = { ...headers };
+  const sensitiveKeys = ["Authorization", "authorization", "X-API-Key", "api-key"];
+  for (const key of sensitiveKeys) {
+    if (sanitized[key]) {
+      const value = String(sanitized[key]);
+      if (value.length > 20) {
+        sanitized[key] = value.substring(0, 20) + "...[已脱敏]";
+      }
+    }
+  }
+  return sanitized;
+}
+
+/**
+ * 保存请求记录（带配额处理）
+ */
+async function saveRequestRecord(record) {
+  try {
+    const { requests = [] } = await chrome.storage.local.get("requests");
+    requests.unshift(record);
+    await chrome.storage.local.set({ requests });
+  } catch (error) {
+    if (error.message && error.message.includes("quota")) {
+      console.warn("请求记录存储配额超限，尝试清理...");
+      await handleStorageQuotaExceeded();
+      try {
+        const { requests = [] } = await chrome.storage.local.get("requests");
+        requests.unshift(record);
+        await chrome.storage.local.set({ requests });
+      } catch (retryError) {
+        console.error("重试保存失败:", retryError);
+      }
+    } else {
+      console.error("保存请求记录失败:", error);
+    }
+  }
+}
+
+/**
+ * 更新请求记录
+ */
+async function updateRequestRecord(id, updates) {
+  try {
+    const { requests = [] } = await chrome.storage.local.get("requests");
+    const index = requests.findIndex(r => r.id === id);
+    if (index !== -1) {
+      requests[index] = { ...requests[index], ...updates };
+      await chrome.storage.local.set({ requests });
+    }
+  } catch (error) {
+    console.error("更新请求记录失败:", error);
+  }
+}
+
+/**
+ * 删除请求记录
+ */
+async function deleteRequestRecord(id) {
+  const { requests = [] } = await chrome.storage.local.get("requests");
+  const filtered = requests.filter(r => r.id !== id);
+  await chrome.storage.local.set({ requests: filtered });
+}
+
+/**
+ * 清理过期请求记录
+ */
+async function cleanupOldRequests() {
+  try {
+    const { settings } = await chrome.storage.local.get("settings");
+    const retentionDays = settings?.requestRetentionDays || 7;
+    const { requests = [] } = await chrome.storage.local.get("requests");
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const filtered = requests.filter(r => new Date(r.timing.startedAt) >= cutoffDate);
+    await chrome.storage.local.set({ requests: filtered });
+  } catch (error) {
+    console.error("清理过期请求记录失败:", error);
+  }
+}
+
+/**
+ * 清理孤立的 pending 请求
+ */
+async function cleanupOrphanedRequests() {
+  try {
+    const { requests = [] } = await chrome.storage.local.get("requests");
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    let updated = false;
+    const cleaned = requests.map(r => {
+      if (r.status === "pending" && new Date(r.timing.startedAt) < oneHourAgo) {
+        updated = true;
+        return {
+          ...r,
+          status: "failed",
+          response: { ...r.response, error: "请求中断（可能是浏览器关闭或扩展更新）" },
+          timing: { ...r.timing, completedAt: new Date().toISOString() },
+        };
+      }
+      return r;
+    });
+    if (updated) {
+      await chrome.storage.local.set({ requests: cleaned });
+    }
+  } catch (error) {
+    console.error("清理孤立请求失败:", error);
+  }
+}
+
+/**
+ * 处理存储配额超限
+ */
+async function handleStorageQuotaExceeded() {
+  try {
+    const { requests = [] } = await chrome.storage.local.get("requests");
+    if (requests.length <= 50) return;
+    const reduced = requests.slice(0, 50);
+    await chrome.storage.local.set({ requests: reduced });
+    console.log(`存储配额超限，已清理 ${requests.length - 50} 条旧记录`);
+  } catch (error) {
+    console.error("处理存储配额超限失败:", error);
+  }
+}
+
+// ==================== 原有代码 ====================
+
 const MAX_HISTORY_ITEMS = 100;
 const DEFAULT_SETTINGS = {
   providers: [],
@@ -21,6 +188,10 @@ chrome.runtime.onInstalled.addListener(async () => {
     await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
   }
   updateContextMenu();
+  
+  // 清理孤立请求和过期请求
+  cleanupOrphanedRequests();
+  cleanupOldRequests();
 });
 
 // 动态生成右键菜单
@@ -111,6 +282,13 @@ async function updateContextMenu() {
       id: "ai-draw-history",
       parentId: "ai-draw-main",
       title: "📚 查看画图历史",
+      contexts: ["selection", "page", "image"],
+    });
+
+    createItem({
+      id: "ai-draw-requests",
+      parentId: "ai-draw-main",
+      title: "📋 请求管理",
       contexts: ["selection", "page", "image"],
     });
 
@@ -211,6 +389,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
   } else if (info.menuItemId === "ai-draw-history") {
     chrome.tabs.create({ url: "history.html" });
+  } else if (info.menuItemId === "ai-draw-requests") {
+    chrome.tabs.create({ url: "requests.html" });
   } else if (
     info.menuItemId === "ai-draw-settings" ||
     info.menuItemId === "ai-draw-no-provider"
@@ -229,6 +409,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === "saveSettings") {
     chrome.storage.local.set({ settings: message.settings }).then(() => {
       updateContextMenu();
+      sendResponse({ success: true });
+    });
+    return true;
+  } else if (message.action === "getRequests") {
+    // 获取请求记录
+    chrome.storage.local.get("requests").then((res) => {
+      sendResponse({ requests: res.requests || [] });
+    });
+    return true;
+  } else if (message.action === "deleteRequest") {
+    // 删除单条请求记录
+    deleteRequestRecord(message.id).then(() => {
+      sendResponse({ success: true });
+    });
+    return true;
+  } else if (message.action === "clearRequests") {
+    // 清空所有请求记录
+    chrome.storage.local.set({ requests: [] }).then(() => {
       sendResponse({ success: true });
     });
     return true;
@@ -294,6 +492,21 @@ async function handleGenerateImage(
       console.log("获取活动标签页失败:", e);
     }
   }
+
+  // 创建请求记录
+  const requestRecord = createRequestRecord({
+    prompt,
+    negativePrompt,
+    provider,
+    imageUrl,
+    operationType,
+    endpoint: provider?.endpoint,
+  });
+  
+  // 保存初始状态
+  await saveRequestRecord(requestRecord);
+  const recordId = requestRecord.id;
+  const startTime = Date.now();
 
   showNotification(`正在使用 ${provider.name} ${opText}...`);
 
@@ -385,6 +598,26 @@ async function handleGenerateImage(
         }
       }
       showNotification(`${opText}成功！`);
+      
+      // 更新请求记录为成功
+      const duration = Date.now() - startTime;
+      await updateRequestRecord(recordId, {
+        status: "success",
+        response: {
+          imageUrl: result.imageUrl,
+          responseData: responseData,
+        },
+        debug: {
+          requestBody: requestBody,
+          requestHeaders: sanitizeRequestHeaders(config.customHeaders || {}),
+          responseData: responseData,
+          endpoint: provider.endpoint,
+        },
+        timing: {
+          completedAt: new Date().toISOString(),
+          duration: duration,
+        },
+      });
 
       // 同时也发送给扩展内部（如 Popup）
       chrome.runtime
@@ -424,6 +657,25 @@ async function handleGenerateImage(
   } catch (error) {
     // console.info(`${opText}失败:`, error);
     showNotification(`${opText}失败: ` + error.message, "error");
+    
+    // 更新请求记录为失败
+    const duration = Date.now() - startTime;
+    await updateRequestRecord(recordId, {
+      status: "failed",
+      response: {
+        error: error.message,
+      },
+      debug: error.debugData || {
+        requestBody: null,
+        requestHeaders: {},
+        responseData: null,
+        endpoint: provider?.endpoint || "",
+      },
+      timing: {
+        completedAt: new Date().toISOString(),
+        duration: duration,
+      },
+    });
 
     // 发送给扩展内部（如 Popup）
     chrome.runtime
@@ -449,6 +701,9 @@ async function handleGenerateImage(
       );
     }
   }
+  
+  // 每次请求后清理过期记录
+  cleanupOldRequests();
 }
 
 async function generateWithCustomAPI(prompt, config) {
