@@ -1217,12 +1217,63 @@ async function getCurrentProvider() {
 }
 
 async function saveToHistory(item) {
+  // 动态导入图片存储模块
+  const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+  
   const { settings } = await chrome.storage.local.get("settings");
   const maxItems = settings?.maxHistory || MAX_HISTORY_ITEMS;
 
+  // 处理图片URL，转换为MD5引用
+  let imageMd5 = null;
+  let originalImageMd5 = null;
+
+  // 处理生成图
+  if (item.imageUrl) {
+    if (item.imageUrl.startsWith("data:")) {
+      // 已经是base64，直接存储
+      imageMd5 = await imageStore.storeImage(item.imageUrl);
+    } else {
+      // 外部URL，下载后存储
+      try {
+        const base64 = await downloadImageAsBase64(item.imageUrl);
+        imageMd5 = await imageStore.storeImage(base64);
+      } catch (e) {
+        console.error("下载生成图失败:", e);
+        // 保留原URL作为降级方案
+        imageMd5 = item.imageUrl;
+      }
+    }
+  }
+
+  // 处理原图（改图操作）
+  if (item.originalImageUrl) {
+    if (item.originalImageUrl.startsWith("data:")) {
+      originalImageMd5 = await imageStore.storeImage(item.originalImageUrl);
+    } else {
+      try {
+        const base64 = await downloadImageAsBase64(item.originalImageUrl);
+        originalImageMd5 = await imageStore.storeImage(base64);
+      } catch (e) {
+        console.error("下载原图失败:", e);
+        originalImageMd5 = item.originalImageUrl;
+      }
+    }
+  }
+
+  // 创建新的历史记录项（使用MD5引用）
+  const historyItem = {
+    id: item.id,
+    prompt: item.prompt,
+    imageMd5: imageMd5,
+    originalImageMd5: originalImageMd5,
+    operationType: item.operationType,
+    provider: item.provider,
+    createdAt: item.createdAt,
+  };
+
   const stored = await chrome.storage.local.get(["history"]);
   let history = stored.history || [];
-  history.unshift(item);
+  history.unshift(historyItem);
   if (history.length > maxItems) history = history.slice(0, maxItems);
 
   // 尝试保存，如果配额超出则抛出特定错误供页面处理
@@ -1734,8 +1785,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "clearHistory") {
     (async () => {
       try {
+        // 动态导入图片存储模块
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        
+        // 清空图片池
+        await chrome.storage.local.set({ imagePool: {} });
+        
+        // 清空历史记录
         await chrome.storage.local.set({ history: [] });
-        console.log("已清空所有历史记录");
+        
+        console.log("已清空所有历史记录和图片池");
         sendResponse({ success: true });
       } catch (e) {
         console.error("清空历史记录失败:", e);
@@ -1747,12 +1806,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "clearHalfHistory") {
     (async () => {
       try {
-        const { settings } = await chrome.storage.local.get("settings");
+        // 动态导入图片存储模块
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        
+        const { settings } = await chrome.storage.local.get(["settings"]);
         const stored = await chrome.storage.local.get(["history"]);
         let history = stored.history || [];
         const maxItems = settings?.maxHistory || MAX_HISTORY_ITEMS;
+        
         // 清理一半
         const reducedHistory = history.slice(0, Math.floor(maxItems / 2));
+        const removedItems = history.slice(Math.floor(maxItems / 2));
+        
+        // 对被删除的记录减少引用计数
+        for (const item of removedItems) {
+          if (item.imageMd5) {
+            await imageStore.decrementRef(item.imageMd5);
+          }
+          if (item.originalImageMd5) {
+            await imageStore.decrementRef(item.originalImageMd5);
+          }
+        }
+        
         await chrome.storage.local.set({ history: reducedHistory });
         console.log("已清理历史记录，剩余:", reducedHistory.length);
         sendResponse({ success: true, remaining: reducedHistory.length });
@@ -1764,12 +1839,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.action === "deleteHistoryItem") {
     (async () => {
-      const stored = await chrome.storage.local.get(["history"]);
-      let history = (stored.history || []).filter(
-        (item) => item.id !== message.id,
-      );
-      await chrome.storage.local.set({ history });
-      sendResponse({ success: true });
+      try {
+        // 动态导入图片存储模块
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        
+        const stored = await chrome.storage.local.get(["history"]);
+        const history = stored.history || [];
+        
+        // 找到要删除的记录
+        const itemToDelete = history.find((item) => item.id === message.id);
+        
+        if (itemToDelete) {
+          // 减少图片引用计数
+          if (itemToDelete.imageMd5) {
+            await imageStore.decrementRef(itemToDelete.imageMd5);
+          }
+          if (itemToDelete.originalImageMd5) {
+            await imageStore.decrementRef(itemToDelete.originalImageMd5);
+          }
+        }
+        
+        // 从历史记录中删除
+        const newHistory = history.filter((item) => item.id !== message.id);
+        await chrome.storage.local.set({ history: newHistory });
+        sendResponse({ success: true });
+      } catch (e) {
+        console.error("删除历史记录失败:", e);
+        sendResponse({ success: false, error: e.message });
+      }
     })();
     return true;
   }
