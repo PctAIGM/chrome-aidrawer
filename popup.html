@@ -48,6 +48,7 @@
           <div class="image-source-tabs">
             <button type="button" id="urlTab" class="tab-btn active">输入URL</button>
             <button type="button" id="uploadTab" class="tab-btn">上传图片</button>
+            <button type="button" id="historyTab" class="tab-btn">历史记录</button>
           </div>
 
           <div id="urlSection" class="image-input-section">
@@ -66,6 +67,35 @@
               <button type="button" id="removeImageBtn" class="remove-btn">&times;</button>
             </div>
             <span class="hint">改图服务需要提供图片</span>
+          </div>
+
+          <div id="historySection" class="image-input-section" style="display: none;">
+            <div id="historyPasswordPrompt" style="display: none;">
+              <p class="history-password-hint">历史记录已加密，请输入密码解锁</p>
+              <div class="password-input-row">
+                <input type="password" id="historyPasswordInput" placeholder="输入密码...">
+                <button type="button" id="historyPasswordSubmitBtn" class="btn secondary">解锁</button>
+              </div>
+              <p id="historyPasswordError" class="password-error" style="display: none;"></p>
+            </div>
+            <div id="historyImageList" class="history-image-list">
+              <!-- 动态加载历史记录图片 -->
+            </div>
+            <div id="historyLoading" class="history-loading" style="display: none;">
+              <span>加载中...</span>
+            </div>
+            <div id="historyEmpty" class="history-empty" style="display: none;">
+              <span>暂无历史记录</span>
+            </div>
+            <!-- 历史记录图片上传区域 -->
+            <div id="historyUploadArea" class="history-upload-area" style="display: none;">
+              <div id="historySelectedPreview" class="history-selected-preview" style="display: none;">
+                <img id="historySelectedImg" src="" alt="已选择的图片">
+                <button type="button" id="removeHistoryImageBtn" class="remove-btn">&times;</button>
+              </div>
+              <div id="historyUploadStatus" class="upload-status" style="display: none;"></div>
+              <button type="button" id="uploadHistoryImageBtn" class="btn secondary" style="display: none;">📤 上传到图床</button>
+            </div>
           </div>
         </div>
         <button id="generateBtn" class="btn primary">

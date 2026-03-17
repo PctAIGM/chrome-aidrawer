@@ -172,12 +172,15 @@ header h1 {
   color: #c53030;
 }
 
+/* 图片预览 */
 .image-preview {
   position: relative;
+  max-height: 120px;
+  object-fit: contain;
+  display: block;
+  background: #f7fafc;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid #e2e8f0;
-  background: #f7fafc;
 }
 
 .image-preview img {
@@ -397,11 +400,6 @@ footer {
   animation: slideUp 0.3s ease;
 }
 
-.notification.success {
-  background: #5cb85c;
-  color: white;
-}
-
 .notification.error {
   background: #d9534f;
   color: white;
@@ -409,6 +407,11 @@ footer {
 
 .notification.info {
   background: #5bc0de;
+  color: white;
+}
+
+.notification.success {
+  background: #5cb85c;
   color: white;
 }
 
@@ -517,4 +520,126 @@ footer {
   color: #a0aec0;
   text-align: center;
   padding: 8px;
+}
+
+/* 历史记录选择相关样式 */
+.history-image-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.history-image-list .history-item {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.history-image-list .history-item:hover {
+  border-color: #a0aec0;
+}
+
+.history-image-list .history-item.selected {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
+
+.history-image-list .history-item img {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.history-password-hint {
+  font-size: 12px;
+  color: #718096;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.password-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.password-input-row input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.password-input-row button {
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+}
+
+.password-input-row button:hover {
+  background: #5a67d8;
+}
+
+.password-error {
+  font-size: 12px;
+  color: #e53c3b;
+  margin-top: 4px;
+}
+
+.history-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  color: #718096;
+  font-size: 13px;
+}
+
+.history-empty {
+  text-align: center;
+  padding: 20px;
+  color: #a0aec0;
+  font-size: 13px;
+}
+
+/* 历史记录图片上传区域 */
+.history-upload-area {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.history-selected-preview {
+  position: relative;
+  max-height: 100px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f7fafc;
+}
+
+.history-selected-preview img {
+  width: 100%;
+  max-height: 100px;
+  object-fit: contain;
+  display: block;
+}
+
+.history-upload-area .upload-status {
+  margin-bottom: 8px;
+}
+
+.history-upload-area .btn {
+  width: 100%;
 }

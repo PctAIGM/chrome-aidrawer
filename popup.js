@@ -95,6 +95,7 @@ function onProviderChange() {
   const imageUrlGroup = document.getElementById("imageUrlGroup");
   const generateBtn = document.getElementById("generateBtn");
   const btnText = generateBtn.querySelector(".btn-text");
+  const historyTab = document.getElementById("historyTab");
 
   if (serviceType === "edit") {
     imageUrlGroup.style.display = "block";
@@ -105,6 +106,9 @@ function onProviderChange() {
   } else {
     imageUrlGroup.style.display = "none";
     btnText.textContent = "生成图片";
+
+    // 隐藏历史记录选项卡
+    historyTab.style.display = "none";
 
     // 重置图片相关状态
     resetImageState();
@@ -335,7 +339,11 @@ async function checkUploadServiceAvailability() {
     const useMultipart = currentProvider?.useMultipart;
 
     const uploadTab = document.getElementById("uploadTab");
+    const historyTab = document.getElementById("historyTab");
     const uploadImageBtn = document.getElementById("uploadImageBtn");
+
+    // 历史记录选项卡始终显示（在改图模式下）
+    historyTab.style.display = "block";
 
     if (useMultipart) {
       // multipart接口：总是显示上传选项卡，不需要图床
@@ -392,6 +400,19 @@ function setupEventListeners() {
   // 图片来源选项卡切换
   document.getElementById("urlTab").addEventListener("click", switchToUrlTab);
   document.getElementById("uploadTab").addEventListener("click", switchToUploadTab);
+  document.getElementById("historyTab").addEventListener("click", switchToHistoryTab);
+
+  // 历史记录密码验证
+  document.getElementById("historyPasswordSubmitBtn").addEventListener("click", verifyHistoryPassword);
+  document.getElementById("historyPasswordInput").addEventListener("keyup", (e) => {
+    if (e.key === "Enter") {
+      verifyHistoryPassword();
+    }
+  });
+
+  // 历史记录图片上传相关事件
+  document.getElementById("uploadHistoryImageBtn").addEventListener("click", uploadHistoryImage);
+  document.getElementById("removeHistoryImageBtn").addEventListener("click", removeSelectedHistoryImage);
 
   // 图片上传相关事件
   document.getElementById("selectImageBtn").addEventListener("click", () => {
@@ -436,10 +457,16 @@ async function generateImage() {
     const currentProvider = providers.find(p => p.id === providerId);
     const useMultipart = currentProvider?.useMultipart;
 
+    // 检查当前活动的选项卡
     const urlTab = document.getElementById("urlTab");
+    const uploadTab = document.getElementById("uploadTab");
+    const historyTab = document.getElementById("historyTab");
+    
     const isUrlMode = urlTab.classList.contains("active");
+    const isUploadMode = uploadTab.classList.contains("active");
+    const isHistoryMode = historyTab.classList.contains("active");
 
-    console.log("改图模式 - URL模式:", isUrlMode, "使用multipart:", useMultipart, "上传的图片URL:", uploadedImageUrl);
+    console.log("改图模式 - URL模式:", isUrlMode, "上传模式:", isUploadMode, "历史记录模式:", isHistoryMode, "使用multipart:", useMultipart);
 
     if (isUrlMode) {
       imageUrl = document.getElementById("imageUrlInput").value.trim();
@@ -448,6 +475,49 @@ async function generateImage() {
         return;
       }
       console.log("使用URL模式，图片URL:", imageUrl);
+    } else if (isHistoryMode) {
+      // 历史记录模式
+      if (!selectedHistoryImageUrl) {
+        showError("请从历史记录中选择一张图片");
+        return;
+      }
+      
+      if (useMultipart) {
+        // multipart模式：使用base64数据
+        if (selectedHistoryImageData) {
+          // 直接使用base64数据
+          imageFile = { 
+            name: "history-image.png",
+            type: "image/png",
+            dataUrl: selectedHistoryImageData 
+          };
+          console.log("使用历史记录图片(base64)，multipart模式");
+        } else if (selectedHistoryImageUrl.startsWith("data:")) {
+          imageFile = { 
+            name: "history-image.png",
+            type: "image/png",
+            dataUrl: selectedHistoryImageUrl 
+          };
+          console.log("使用历史记录图片(base64 URL)，multipart模式");
+        } else {
+          showError("历史记录图片格式不支持multipart模式");
+          return;
+        }
+      } else {
+        // 非multipart模式：需要URL
+        if (uploadedHistoryImageUrl) {
+          // 已上传到图床
+          imageUrl = uploadedHistoryImageUrl;
+          console.log("使用历史记录图片(已上传)，URL:", imageUrl);
+        } else if (selectedHistoryImageUrl.startsWith("http")) {
+          // 已经是HTTP URL
+          imageUrl = selectedHistoryImageUrl;
+          console.log("使用历史记录图片(HTTP URL):", imageUrl);
+        } else {
+          showError("请先点击'上传到图床'按钮上传历史记录图片");
+          return;
+        }
+      }
     } else {
       // 上传模式
       const fileInput = document.getElementById("imageFileInput");
@@ -493,7 +563,14 @@ async function generateImage() {
     if (serviceType === "edit") {
       if (imageFile) {
         // 对于multipart接口，发送文件数据
-        const base64 = await fileToBase64(imageFile);
+        let base64;
+        if (imageFile.dataUrl) {
+          // 历史记录图片，直接使用dataUrl
+          base64 = imageFile.dataUrl;
+        } else {
+          // 上传的文件，需要转换
+          base64 = await fileToBase64(imageFile);
+        }
         await chrome.runtime.sendMessage({
           action: "editImage",
           prompt: prompt,
@@ -617,20 +694,37 @@ function resetToInput() {
 }
 
 // 图片来源选项卡切换
-function switchToUrlTab() {
-  document.getElementById("urlTab").classList.add("active");
-  document.getElementById("uploadTab").classList.remove("active");
-  document.getElementById("urlSection").style.display = "block";
-  document.getElementById("uploadSection").style.display = "none";
-  console.log("切换到URL模式");
-}
-
 function switchToUploadTab() {
-  document.getElementById("urlTab").classList.remove("active");
-  document.getElementById("uploadTab").classList.add("active");
+  const urlTab = document.getElementById("urlTab");
+  const uploadTab = document.getElementById("uploadTab");
+  const historyTab = document.getElementById("historyTab");
+  
+  urlTab.classList.remove("active");
+  uploadTab.classList.add("active");
+  historyTab.classList.remove("active");
+  
   document.getElementById("urlSection").style.display = "none";
   document.getElementById("uploadSection").style.display = "block";
+  document.getElementById("historySection").style.display = "none";
+  
   console.log("切换到上传模式，当前上传状态:", !!uploadedImageUrl);
+}
+
+// 切换到URL选项卡
+function switchToUrlTab() {
+  const urlTab = document.getElementById("urlTab");
+  const uploadTab = document.getElementById("uploadTab");
+  const historyTab = document.getElementById("historyTab");
+  
+  urlTab.classList.add("active");
+  uploadTab.classList.remove("active");
+  historyTab.classList.remove("active");
+  
+  document.getElementById("urlSection").style.display = "block";
+  document.getElementById("uploadSection").style.display = "none";
+  document.getElementById("historySection").style.display = "none";
+  
+  console.log("切换到URL模式");
 }
 
 // 文件选择处理
@@ -835,7 +929,12 @@ function removeSelectedImage() {
 // 重置图片相关状态
 function resetImageState() {
   uploadedImageUrl = null;
+  selectedHistoryImageUrl = null;
+  selectedHistoryPrompt = "";
+  selectedHistoryImageData = null;
+  uploadedHistoryImageUrl = null;
   removeSelectedImage();
+  removeSelectedHistoryImage();
   document.getElementById("imageUrlInput").value = "";
   switchToUrlTab();
 }
@@ -957,3 +1056,350 @@ async function uploadCurrentImageToAlbum() {
     uploadBtn.textContent = originalText;
   }
 }
+
+// 切换到历史记录选项卡
+async function switchToHistoryTab() {
+    const urlTab = document.getElementById("urlTab");
+    const uploadTab = document.getElementById("uploadTab");
+    const historyTab = document.getElementById("historyTab");
+    
+    urlTab.classList.remove("active");
+    uploadTab.classList.remove("active");
+    historyTab.classList.add("active");
+    
+    document.getElementById("urlSection").style.display = "none";
+    document.getElementById("uploadSection").style.display = "none";
+    document.getElementById("historySection").style.display = "block";
+    
+    // 检查密码保护并显示密码提示或加载历史记录
+    await checkPasswordProtectionAndLoad();
+    
+    console.log("切换到历史记录模式");
+}
+
+// 检查密码保护并加载历史记录
+async function checkPasswordProtectionAndLoad() {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const passwordHash = response.historyPasswordHash || "";
+    
+    const passwordPrompt = document.getElementById("historyPasswordPrompt");
+    const historyImageList = document.getElementById("historyImageList");
+    const historyLoading = document.getElementById("historyLoading");
+    const historyEmpty = document.getElementById("historyEmpty");
+    
+    if (passwordHash) {
+        // 需要密码验证
+        passwordPrompt.style.display = "block";
+        historyImageList.style.display = "none";
+        historyLoading.style.display = "none";
+        historyEmpty.style.display = "none";
+    } else {
+        // 无需密码，直接加载历史记录
+        passwordPrompt.style.display = "none";
+        await loadHistoryImages();
+    }
+}
+
+// 验证历史记录密码
+async function verifyHistoryPassword() {
+    const passwordInput = document.getElementById("historyPasswordInput");
+    const passwordError = document.getElementById("historyPasswordError");
+    const password = passwordInput.value.trim();
+    
+    if (!password) {
+        passwordError.textContent = "请输入密码";
+        passwordError.style.display = "block";
+        return;
+    }
+    
+    try {
+        // 使用 SHA-256 哈希验证密码
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const inputHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+        
+        const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+        const storedHash = response.historyPasswordHash || "";
+        
+        if (inputHash === storedHash) {
+            // 密码正确，隐藏密码提示并加载历史记录
+            passwordError.style.display = "none";
+            passwordInput.value = "";
+            document.getElementById("historyPasswordPrompt").style.display = "none";
+            await loadHistoryImages();
+        } else {
+            passwordError.textContent = "密码错误";
+            passwordError.style.display = "block";
+            passwordInput.value = "";
+            passwordInput.focus();
+        }
+    } catch (error) {
+        console.error("密码验证失败:", error);
+        passwordError.textContent = "验证失败: " + error.message;
+        passwordError.style.display = "block";
+    }
+}
+
+// 加载历史记录图片
+async function loadHistoryImages() {
+    const historyImageList = document.getElementById("historyImageList");
+    const historyLoading = document.getElementById("historyLoading");
+    const historyEmpty = document.getElementById("historyEmpty");
+    
+    historyLoading.style.display = "flex";
+    historyImageList.innerHTML = "";
+    historyEmpty.style.display = "none";
+    
+    try {
+        const response = await chrome.runtime.sendMessage({ action: "getHistory" });
+        const historyData = response.history || [];
+        
+        historyLoading.style.display = "none";
+        
+        if (historyData.length === 0) {
+            historyEmpty.style.display = "block";
+            return;
+        }
+        
+        // 渲染历史记录图片（只显示最近的20条）
+        const recentHistory = historyData.slice(0, 20);
+        
+        for (const item of recentHistory) {
+            const div = document.createElement("div");
+            div.className = "history-item";
+            
+            // 获取图片URL
+            const imageUrl = item.imageMd5 || item.imageUrl;
+            if (!imageUrl) continue;
+            
+            div.dataset.url = imageUrl;
+            div.dataset.prompt = item.prompt || "";
+            div.dataset.imageData = ""; // 将存储base64数据
+            
+            const img = document.createElement("img");
+            img.className = "history-thumb";
+            img.loading = "lazy";
+            
+            // 处理不同格式的图片URL
+            if (imageUrl.startsWith("data:")) {
+                // base64格式
+                img.src = imageUrl;
+                div.dataset.imageData = imageUrl;
+            } else if (imageUrl.startsWith("http")) {
+                // HTTP URL格式
+                img.src = imageUrl;
+            } else {
+                // MD5格式，需要从图片池获取
+                try {
+                    const res = await chrome.runtime.sendMessage({
+                        action: "getImageByMd5",
+                        md5: imageUrl
+                    });
+                    if (res?.success && res?.imageUrl) {
+                        img.src = res.imageUrl;
+                        // 如果返回的是base64，存储它
+                        if (res.imageUrl.startsWith("data:")) {
+                            div.dataset.imageData = res.imageUrl;
+                        }
+                    }
+                } catch (e) {
+                    console.error("获取图片失败:", e);
+                }
+            }
+            
+            // 处理图片加载错误
+            img.onerror = () => {
+                div.style.display = "none";
+            };
+            
+            // 点击选择历史记录图片
+            div.addEventListener("click", () => {
+                selectHistoryImage(
+                    div.dataset.url, 
+                    div.dataset.prompt, 
+                    div.dataset.imageData || null
+                );
+            });
+            
+            div.appendChild(img);
+            historyImageList.appendChild(div);
+        }
+        
+        historyImageList.style.display = "grid";
+        
+    } catch (error) {
+        console.error("加载历史记录失败:", error);
+        historyLoading.style.display = "none";
+        historyEmpty.style.display = "block";
+    }
+}
+
+// 选择历史记录图片
+let selectedHistoryImageUrl = null;
+let selectedHistoryPrompt = "";
+let selectedHistoryImageData = null; // 存储base64数据（用于multipart）
+let uploadedHistoryImageUrl = null; // 存储上传后的URL（用于非multipart）
+
+function selectHistoryImage(imageUrl, prompt, imageData) {
+    selectedHistoryImageUrl = imageUrl;
+    selectedHistoryPrompt = prompt;
+    selectedHistoryImageData = imageData || null;
+    uploadedHistoryImageUrl = null; // 重置上传状态
+    
+    console.log("选中历史记录图片:", imageUrl, "是否有base64数据:", !!imageData);
+    
+    // 更新UI显示已选择
+    const items = document.querySelectorAll(".history-item");
+    items.forEach(item => {
+        item.classList.remove("selected");
+        if (item.dataset.url === imageUrl) {
+            item.classList.add("selected");
+        }
+    });
+    
+    // 如果提示词为空，使用历史记录的提示词
+    const promptInput = document.getElementById("promptInput");
+    if (promptInput && !promptInput.value.trim() && prompt) {
+        promptInput.value = prompt;
+    }
+    
+    // 检查是否需要上传到图床
+    checkHistoryImageUploadNeeded();
+}
+
+// 检查历史记录图片是否需要上传到图床
+async function checkHistoryImageUploadNeeded() {
+    const historyUploadArea = document.getElementById("historyUploadArea");
+    const historySelectedPreview = document.getElementById("historySelectedPreview");
+    const historySelectedImg = document.getElementById("historySelectedImg");
+    const uploadHistoryImageBtn = document.getElementById("uploadHistoryImageBtn");
+    
+    if (!selectedHistoryImageUrl) {
+        historyUploadArea.style.display = "none";
+        return;
+    }
+    
+    // 获取当前提供商配置
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const select = document.getElementById("provider");
+    const providerId = select.value;
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+    const useMultipart = currentProvider?.useMultipart;
+    
+    // 检查图片URL类型
+    const isHttpUrl = selectedHistoryImageUrl.startsWith("http://") || selectedHistoryImageUrl.startsWith("https://");
+    const isDataUrl = selectedHistoryImageUrl.startsWith("data:");
+    
+    // 显示预览
+    historySelectedImg.src = isDataUrl ? selectedHistoryImageUrl : 
+                             (isHttpUrl ? selectedHistoryImageUrl : selectedHistoryImageData || selectedHistoryImageUrl);
+    historySelectedPreview.style.display = "block";
+    historyUploadArea.style.display = "block";
+    
+    if (useMultipart) {
+        // multipart模式：不需要上传，直接使用
+        uploadHistoryImageBtn.style.display = "none";
+        showHistoryUploadStatus("multipart接口可直接使用，无需上传", "info");
+    } else if (isHttpUrl) {
+        // 已经是HTTP URL，可以直接使用
+        uploadHistoryImageBtn.style.display = "none";
+        showHistoryUploadStatus("图片URL可直接使用", "success");
+        uploadedHistoryImageUrl = selectedHistoryImageUrl;
+    } else {
+        // base64或MD5格式，需要上传到图床
+        uploadHistoryImageBtn.style.display = "block";
+        showHistoryUploadStatus("需要上传到图床获取URL", "info");
+    }
+}
+
+// 显示历史记录上传状态
+function showHistoryUploadStatus(message, type = "info") {
+    const status = document.getElementById("historyUploadStatus");
+    status.textContent = message;
+    status.className = `upload-status ${type}`;
+    status.style.display = "block";
+}
+
+// 隐藏历史记录上传状态
+function hideHistoryUploadStatus() {
+    const status = document.getElementById("historyUploadStatus");
+    status.style.display = "none";
+}
+
+// 上传历史记录图片到图床
+async function uploadHistoryImage() {
+    if (!selectedHistoryImageData && !selectedHistoryImageUrl.startsWith("data:")) {
+        showHistoryUploadStatus("没有可上传的图片数据", "error");
+        return;
+    }
+    
+    const uploadBtn = document.getElementById("uploadHistoryImageBtn");
+    const originalText = uploadBtn.textContent;
+    
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = "上传中...";
+    
+    try {
+        const imageData = selectedHistoryImageData || selectedHistoryImageUrl;
+        
+        const result = await chrome.runtime.sendMessage({
+            action: "uploadImage",
+            imageData: imageData,
+            fileName: "history-image.png"
+        });
+        
+        if (result.success) {
+            uploadedHistoryImageUrl = result.imageUrl;
+            console.log("历史记录图片上传成功，URL:", uploadedHistoryImageUrl);
+            
+            uploadBtn.textContent = "✅ 已上传";
+            uploadBtn.style.background = "#48bb78";
+            uploadBtn.style.color = "white";
+            
+            showHistoryUploadStatus("上传成功！可以开始改图了", "success");
+        } else {
+            throw new Error(result.error || "上传失败");
+        }
+    } catch (error) {
+        console.error("上传历史记录图片失败:", error);
+        showHistoryUploadStatus("上传失败: " + formatErrorMessage(error), "error");
+        uploadBtn.textContent = originalText;
+        uploadBtn.disabled = false;
+    }
+}
+
+// 移除选择的历史记录图片
+function removeSelectedHistoryImage() {
+    selectedHistoryImageUrl = null;
+    selectedHistoryPrompt = "";
+    selectedHistoryImageData = null;
+    uploadedHistoryImageUrl = null;
+    
+    // 更新UI
+    const items = document.querySelectorAll(".history-item");
+    items.forEach(item => item.classList.remove("selected"));
+    
+    const historyUploadArea = document.getElementById("historyUploadArea");
+    const historySelectedPreview = document.getElementById("historySelectedPreview");
+    const uploadHistoryImageBtn = document.getElementById("uploadHistoryImageBtn");
+    
+    historyUploadArea.style.display = "none";
+    historySelectedPreview.style.display = "none";
+    hideHistoryUploadStatus();
+    
+    // 重置上传按钮
+    uploadHistoryImageBtn.textContent = "📤 上传到图床";
+    uploadHistoryImageBtn.style.background = "";
+    uploadHistoryImageBtn.style.color = "";
+    uploadHistoryImageBtn.disabled = false;
+}
+
+
+
+
+
+
+
