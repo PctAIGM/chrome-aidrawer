@@ -1366,3 +1366,143 @@ kbd {
     }
 }
 
+/* ==================== 图片存储迁移样式 ==================== */
+
+.migration-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.migration-status {
+    padding: 16px;
+    background: var(--accent-light);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+}
+
+.status-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.status-icon {
+    font-size: 20px;
+}
+
+.status-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.status-description {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-left: 28px;
+}
+
+.migration-progress {
+    margin: 16px 0;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent-color);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.migration-actions {
+    margin-top: 16px;
+}
+
+.migration-tools {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.migration-complete {
+    text-align: center;
+    padding: 24px;
+    background: rgba(52, 199, 89, 0.1);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(52, 199, 89, 0.2);
+}
+
+.success-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.migration-complete p {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+/* 迁移状态警告样式 */
+.migration-status.warning {
+    background: rgba(255, 149, 0, 0.1);
+    border: 1px solid rgba(255, 149, 0, 0.2);
+}
+
+.migration-status.error {
+    background: rgba(255, 59, 48, 0.1);
+    border: 1px solid rgba(255, 59, 48, 0.2);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .migration-stats {
+        grid-template-columns: 1fr;
+    }
+    
+    .migration-tools {
+        flex-direction: column;
+    }
+    
+    .migration-tools .btn {
+        width: 100%;
+    }
+}
+

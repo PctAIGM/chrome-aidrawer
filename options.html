@@ -467,6 +467,58 @@
 
                 <!-- 备份标签页 -->
                 <section id="tab-backup" class="tab-content">
+                    <!-- 图片存储迁移 -->
+                    <div class="card settings-card">
+                        <h2>🖼️ 图片存储管理</h2>
+                        <div id="migrationStats" class="migration-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">图片池大小</span>
+                                <span class="stat-value" id="imagePoolSize">加载中...</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">历史记录数</span>
+                                <span class="stat-value" id="historyCount">加载中...</span>
+                            </div>
+                            <div class="stat-item" id="migrationStatusItem">
+                                <span class="stat-label">迁移状态</span>
+                                <span class="stat-value" id="migrationStatus">加载中...</span>
+                            </div>
+                        </div>
+                        <div id="migrationRequired" class="migration-required" style="display: none;">
+                            <div class="migration-warning">
+                                <span class="warning-icon">⚠️</span>
+                                <div class="warning-text">
+                                    <strong>需要迁移历史记录</strong>
+                                    <p>检测到旧格式的历史记录，需要迁移到新的图片池存储格式。迁移后可解决改图原图URL失效的问题。</p>
+                                </div>
+                            </div>
+                            <div class="migration-actions">
+                                <button id="startMigrationBtn" class="btn primary">
+                                    🚀 开始迁移
+                                </button>
+                            </div>
+                        </div>
+                        <div id="migrationProgress" class="migration-progress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="migrationProgressBar"></div>
+                            </div>
+                            <p class="progress-text" id="migrationProgressText">准备迁移...</p>
+                        </div>
+                        <div id="migrationComplete" class="migration-complete" style="display: none;">
+                            <div class="success-icon">✅</div>
+                            <p>迁移完成！所有历史记录已转换为新的存储格式。</p>
+                        </div>
+                        <div class="migration-tools">
+                            <button id="refreshStatsBtn" class="btn secondary small">
+                                🔄 刷新统计
+                            </button>
+                            <button id="cleanupInvalidRefsBtn" class="btn secondary small">
+                                🧹 清理无效引用
+                            </button>
+                        </div>
+                        <div id="migrationStatusMessage" class="status" style="margin-top: 8px;"></div>
+                    </div>
+
                     <!-- WebDAV 同步设置 -->
                     <div class="card settings-card">
                         <h2>☁️ WebDAV 同步</h2>

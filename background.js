@@ -1,4 +1,5 @@
 // AI画图助手 - 后台脚本
+import * as imageStore from "./lib/image-store.js";
 
 // ==================== 请求记录工具函数 ====================
 
@@ -214,19 +215,30 @@ const DEFAULT_SETTINGS = {
 let contextImageUrl = null;
 
 // 初始化
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   const stored = await chrome.storage.local.get(["settings"]);
   if (!stored.settings) {
     await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
   }
-  updateContextMenu();
   
-  // 清理孤立请求和过期请求
-  cleanupOrphanedRequests();
-  cleanupOldRequests();
+  // 新用户初始化迁移状态为已完成
+  if (details.reason === "install") {
+    const { migrationStatus } = await chrome.storage.local.get("migrationStatus");
+    if (!migrationStatus) {
+      await chrome.storage.local.set({
+        migrationStatus: {
+          status: "completed",
+          lastMigrated: Date.now(),
+          error: null,
+        }
+      });
+      console.log("新用户：迁移状态已初始化为完成");
+    }
+  }
+
+  updateContextMenu();
 });
 
-// 动态生成右键菜单
 // 动态生成右键菜单
 let isUpdatingMenu = false;
 async function updateContextMenu() {
@@ -1262,9 +1274,6 @@ async function getCurrentProvider() {
 }
 
 async function saveToHistory(item) {
-  // 动态导入图片存储模块
-  const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
-  
   const { settings } = await chrome.storage.local.get("settings");
   const maxItems = settings?.maxHistory || MAX_HISTORY_ITEMS;
 
@@ -1830,9 +1839,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "clearHistory") {
     (async () => {
       try {
-        // 动态导入图片存储模块
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
-        
         // 清空图片池
         await chrome.storage.local.set({ imagePool: {} });
         
@@ -1851,9 +1857,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "clearHalfHistory") {
     (async () => {
       try {
-        // 动态导入图片存储模块
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
-        
         const { settings } = await chrome.storage.local.get(["settings"]);
         const stored = await chrome.storage.local.get(["history"]);
         let history = stored.history || [];
@@ -1885,9 +1888,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "deleteHistoryItem") {
     (async () => {
       try {
-        // 动态导入图片存储模块
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
-        
         const stored = await chrome.storage.local.get(["history"]);
         const history = stored.history || [];
         
@@ -2141,7 +2141,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getImageByMd5") {
     (async () => {
       try {
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
         const imageUrl = await imageStore.getImage(message.md5);
         sendResponse({ success: true, imageUrl: imageUrl });
       } catch (e) {
@@ -2152,16 +2151,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   // ==================== 迁移状态管理相关消息 ====================
   if (message.action === "getMigrationStatus") {
-    chrome.storage.local.get("migrationStatus").then((result) => {
-      sendResponse(result.migrationStatus || { status: "none" });
-    });
+    (async () => {
+      const { migrationStatus } = await chrome.storage.local.get("migrationStatus");
+      const { history = [] } = await chrome.storage.local.get("history");
+      
+      // 检查是否有旧格式的历史记录（没有 imageMd5 字段）
+      const hasOldFormat = history.some(
+        (item) => !item.imageMd5 && item.imageUrl
+      );
+      
+      // 如果有旧格式记录且没有迁移状态，需要迁移
+      if (hasOldFormat && !migrationStatus) {
+        sendResponse({
+          status: "idle",
+          required: true,
+          pendingCount: history.filter(item => !item.imageMd5 && item.imageUrl).length
+        });
+      } else if (migrationStatus) {
+        sendResponse({
+          ...migrationStatus,
+          required: hasOldFormat
+        });
+      } else {
+        // 没有旧格式记录，无需迁移
+        sendResponse({
+          status: "completed",
+          required: false
+        });
+      }
+    })();
     return true;
   }
   if (message.action === "startMigration") {
     (async () => {
       try {
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
-        
         // 设置迁移状态
         await chrome.storage.local.set({
           migrationStatus: {
@@ -2289,7 +2312,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getStorageStats") {
     (async () => {
       try {
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
         const stats = await imageStore.getStorageStats();
         sendResponse({ success: true, stats });
       } catch (e) {
@@ -2301,7 +2323,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "cleanupInvalidRefs") {
     (async () => {
       try {
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
         const cleaned = await imageStore.cleanupInvalidRefs();
         sendResponse({ success: true, cleaned });
       } catch (e) {
@@ -2313,7 +2334,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "rebuildRefCount") {
     (async () => {
       try {
-        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
         const result = await imageStore.rebuildRefCount();
         sendResponse(result);
       } catch (e) {

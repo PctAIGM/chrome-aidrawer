@@ -3,6 +3,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   loadSettings();
   setupEventListeners();
+  initMigrationManager();
 });
 
 // 默认配置
@@ -3187,3 +3188,273 @@ function showPasswordMessage(message, type = "info") {
     el.className = "password-message";
   }, 3000);
 }
+
+// ==================== 图片存储迁移功能 ====================
+
+/**
+ * 初始化迁移管理功能
+ */
+async function initMigrationManager() {
+  // 加载存储统计
+  await loadStorageStats();
+  
+  // 加载迁移状态
+  await loadMigrationStatus();
+  
+  // 绑定事件
+  const startMigrationBtn = document.getElementById("startMigrationBtn");
+  if (startMigrationBtn) {
+    startMigrationBtn.addEventListener("click", startMigration);
+  }
+  
+  const refreshStatsBtn = document.getElementById("refreshStatsBtn");
+  if (refreshStatsBtn) {
+    refreshStatsBtn.addEventListener("click", loadStorageStats);
+  }
+  
+  const cleanupInvalidRefsBtn = document.getElementById("cleanupInvalidRefsBtn");
+  if (cleanupInvalidRefsBtn) {
+    cleanupInvalidRefsBtn.addEventListener("click", cleanupInvalidRefs);
+  }
+}
+
+/**
+ * 加载存储统计信息
+ */
+async function loadStorageStats() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getStorageStats" });
+    
+    if (response && response.success) {
+      const stats = response.stats;
+      
+      // 更新UI - 使用正确的元素ID和属性名
+      const poolSizeEl = document.getElementById("imagePoolSize");
+      const historyCountEl = document.getElementById("historyCount");
+      
+      if (poolSizeEl) {
+        const sizeMB = ((stats.totalSize || 0) / 1024 / 1024).toFixed(2);
+        poolSizeEl.textContent = `${stats.totalImages || 0} 张 (${sizeMB} MB)`;
+      }
+      if (historyCountEl) {
+        // 获取历史记录数量
+        const historyResponse = await chrome.runtime.sendMessage({ action: "getHistory" });
+        historyCountEl.textContent = historyResponse?.history?.length || 0;
+      }
+    }
+  } catch (error) {
+    console.error("加载存储统计失败:", error);
+    showMigrationStatus("加载存储统计失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 加载迁移状态
+ */
+async function loadMigrationStatus() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getMigrationStatus" });
+    
+    if (response) {
+      updateMigrationUI(response);
+    }
+  } catch (error) {
+    console.error("加载迁移状态失败:", error);
+  }
+}
+
+/**
+ * 更新迁移UI状态
+ * @param {Object} status - 迁移状态对象
+ */
+function updateMigrationUI(status) {
+  const startBtn = document.getElementById("startMigrationBtn");
+  const progressSection = document.getElementById("migrationProgress");
+  const progressBar = document.getElementById("migrationProgressBar");
+  const progressText = document.getElementById("migrationProgressText");
+  const completeSection = document.getElementById("migrationComplete");
+  const statusText = document.getElementById("migrationStatus");
+  const statusItem = document.getElementById("migrationStatusItem");
+  const requiredSection = document.getElementById("migrationRequired");
+  
+  // 检查是否需要迁移
+  if (!status.required) {
+    // 新用户或已迁移完成，隐藏所有迁移相关UI
+    if (requiredSection) requiredSection.style.display = "none";
+    if (progressSection) progressSection.style.display = "none";
+    if (completeSection) completeSection.style.display = "none";
+    if (statusItem) statusItem.style.display = "none";
+    return;
+  }
+  
+  // 根据迁移状态更新UI
+  switch (status.status) {
+    case "idle":
+      // 未开始迁移
+      if (requiredSection) requiredSection.style.display = "block";
+      if (progressSection) progressSection.style.display = "none";
+      if (completeSection) completeSection.style.display = "none";
+      if (statusItem) statusItem.style.display = "block";
+      if (startBtn) {
+        startBtn.style.display = "inline-flex";
+        startBtn.disabled = false;
+      }
+      if (statusText) statusText.textContent = `⚠️ 待迁移 (${status.pendingCount || "?"} 条)`;
+      break;
+      
+    case "in_progress":
+      // 迁移进行中
+      if (requiredSection) requiredSection.style.display = "block";
+      if (progressSection) progressSection.style.display = "block";
+      if (completeSection) completeSection.style.display = "none";
+      if (statusItem) statusItem.style.display = "block";
+      if (startBtn) {
+        startBtn.style.display = "inline-flex";
+        startBtn.disabled = true;
+        startBtn.textContent = "迁移中...";
+      }
+      
+      // 更新进度条
+      const percent = status.total > 0 ? Math.round((status.current / status.total) * 100) : 0;
+      if (progressBar) progressBar.style.width = `${percent}%`;
+      if (progressText) progressText.textContent = `${status.current || 0} / ${status.total || 0}`;
+      if (statusText) statusText.textContent = `🔄 迁移中 (${percent}%)`;
+      break;
+      
+    case "completed":
+      // 迁移完成，隐藏所有迁移相关UI
+      if (requiredSection) requiredSection.style.display = "none";
+      if (progressSection) progressSection.style.display = "none";
+      if (completeSection) completeSection.style.display = "none";
+      if (statusItem) statusItem.style.display = "none";
+      break;
+      
+    case "error":
+      // 迁移出错
+      if (requiredSection) requiredSection.style.display = "block";
+      if (progressSection) progressSection.style.display = "none";
+      if (completeSection) completeSection.style.display = "none";
+      if (statusItem) statusItem.style.display = "block";
+      if (startBtn) {
+        startBtn.style.display = "inline-flex";
+        startBtn.disabled = false;
+        startBtn.textContent = "🚀 开始迁移";
+      }
+      if (statusText) statusText.textContent = `❌ 失败: ${status.error || "未知错误"}`;
+      break;
+  }
+}
+
+/**
+ * 开始迁移
+ */
+async function startMigration() {
+  const startBtn = document.getElementById("startMigrationBtn");
+  const statusText = document.getElementById("migrationStatusText");
+  
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = "正在启动迁移...";
+  }
+  
+  if (statusText) statusText.textContent = "正在准备迁移...";
+  
+  try {
+    // 发送迁移请求
+    const response = await chrome.runtime.sendMessage({ action: "startMigration" });
+    
+    if (response && response.success) {
+      showMigrationStatus("迁移已开始，请勿关闭此页面...", "info");
+      
+      // 开始轮询迁移状态
+      pollMigrationStatus();
+    } else {
+      throw new Error(response?.error || "启动迁移失败");
+    }
+  } catch (error) {
+    console.error("启动迁移失败:", error);
+    showMigrationStatus("启动迁移失败: " + error.message, "error");
+    
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = "开始迁移";
+    }
+  }
+}
+
+/**
+ * 轮询迁移状态
+ */
+async function pollMigrationStatus() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getMigrationStatus" });
+    
+    if (response) {
+      updateMigrationUI(response);
+      
+      // 如果仍在进行中，继续轮询
+      if (response.status === "in_progress") {
+        setTimeout(pollMigrationStatus, 1000);
+      } else if (response.status === "completed") {
+        // 迁移完成，刷新统计
+        await loadStorageStats();
+        showMigrationStatus("迁移完成！", "success");
+      } else if (response.status === "error") {
+        showMigrationStatus("迁移失败: " + (response.error || "未知错误"), "error");
+      }
+    }
+  } catch (error) {
+    console.error("轮询迁移状态失败:", error);
+  }
+}
+
+/**
+ * 清理无效引用
+ */
+async function cleanupInvalidRefs() {
+  const btn = document.getElementById("cleanupInvalidRefsBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "清理中...";
+  }
+  
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "cleanupInvalidRefs" });
+    
+    if (response && response.success) {
+      const removed = response.removed || 0;
+      showMigrationStatus(`清理完成，移除了 ${removed} 个无效引用`, "success");
+      await loadStorageStats();
+    } else {
+      throw new Error(response?.error || "清理失败");
+    }
+  } catch (error) {
+    console.error("清理无效引用失败:", error);
+    showMigrationStatus("清理失败: " + error.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "🧹 清理无效引用";
+    }
+  }
+}
+
+/**
+ * 显示迁移状态消息
+ * @param {string} message - 消息内容
+ * @param {string} type - 消息类型
+ */
+function showMigrationStatus(message, type = "info") {
+  const el = document.getElementById("migrationStatusMessage");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "status " + type;
+  // 不自动清除，让用户手动看到
+}
+
+// 在 DOMContentLoaded 中初始化迁移管理
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  setupEventListeners();
+  initMigrationManager();
+});

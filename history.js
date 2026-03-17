@@ -254,8 +254,6 @@ function showVerifyPasswordMessage(message, type = "info") {
   el.className = "password-message " + type;
 }
 
-
-
 // 调试功能：手动触发404处理（开发时使用）
 function debugTrigger404Handling() {
   console.log('🔧 手动触发404处理测试');
@@ -334,7 +332,44 @@ async function loadHistory() {
   }
 }
 
-function renderGallery() {
+/**
+ * 获取图片URL（从图片池或使用原始值，兼容新旧格式）
+ * @param {string} md5OrUrl - MD5哈希值或图片URL
+ * @returns {Promise<string|null>} base64格式的图片数据，不存在返回null
+ */
+async function getImageUrl(md5OrUrl) {
+  if (!md5OrUrl) return null;
+  
+  // 如果是base64数据（旧格式），直接返回
+  if (md5OrUrl.startsWith("data:")) {
+    return md5OrUrl;
+  }
+  
+  // 如果是http/https URL，直接返回
+  if (md5OrUrl.startsWith("http")) {
+    return md5OrUrl;
+  }
+  
+  // 否则认为是MD5，从图片池获取
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: "getImageByMd5",
+      md5: md5OrUrl,
+    });
+    
+    if (response?.success && response?.imageUrl) {
+      return response.imageUrl;
+    }
+    
+    // 如果从池中获取失败，可能是旧格式的URL被误判
+    return null;
+  } catch (e) {
+    console.error("获取图片失败:", e);
+    return null;
+  }
+}
+
+async function renderGallery() {
   const gallery = document.getElementById("gallery");
   const emptyState = document.getElementById("emptyState");
   const historyCount = document.getElementById("historyCount");
@@ -354,33 +389,37 @@ function renderGallery() {
   if (gallery) {
     gallery.innerHTML = "";
 
-    // 获取设置
-    chrome.runtime.sendMessage({ action: "getSettings" }).then((settings) => {
-      const imagesPerRow = settings.imagesPerRow || 4;
-      // 使用本地NSFW设置，如果为null则使用全局设置
-      const allowNSFW = localNSFWSetting !== null ? localNSFWSetting : !!settings.allowNSFW;
+    const settings = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const imagesPerRow = settings.imagesPerRow || 4;
+    // 使用本地NSFW设置，如果为null则使用全局设置
+    const allowNSFW = localNSFWSetting !== null ? localNSFWSetting : !!settings.allowNSFW;
 
-      gallery.style.display = "grid";
-      gallery.style.gridTemplateColumns = `repeat(${imagesPerRow}, 1fr)`;
+    gallery.style.display = "grid";
+    gallery.style.gridTemplateColumns = `repeat(${imagesPerRow}, 1fr)`;
 
-      if (emptyState) emptyState.style.display = "none";
+    if (emptyState) emptyState.style.display = "none";
 
-      filteredData.forEach((item) => {
-        const card = createHistoryCard(item, allowNSFW);
-        gallery.appendChild(card);
-      });
-    });
+    // 使用异步创建卡片
+    for (const item of filteredData) {
+      const card = await createHistoryCard(item, allowNSFW);
+      gallery.appendChild(card);
+    }
   }
 }
 
-function createHistoryCard(item, allowNSFW) {
+async function createHistoryCard(item, allowNSFW) {
   const card = document.createElement("div");
   card.className = "history-card";
   if (!allowNSFW) card.classList.add("nsfw-blur");
   card.dataset.id = item.id;
 
-  const isEdit = item.operationType === "edit" && item.originalImageUrl;
+  // 兼容新旧格式：优先使用MD5，其次是URL
+  const isEdit = item.operationType === "edit" && (item.originalImageMd5 || item.originalImageUrl);
   const isSelected = selectedItems.has(item.id);
+
+  // 获取图片URL（从图片池或使用原始值）
+  const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+  const originalImageUrl = isEdit ? await getImageUrl(item.originalImageMd5 || item.originalImageUrl) : null;
 
   // 如果是改图操作，显示原图和结果图
   const nsfwOverlayHtml = !allowNSFW
@@ -392,7 +431,7 @@ function createHistoryCard(item, allowNSFW) {
     imageHtml = `
       <div class="card-image dual-image">
         <div class="image-container original">
-          <img src="${item.originalImageUrl}" alt="原图" loading="lazy" data-error-type="original">
+          <img src="${originalImageUrl || ''}" alt="原图" loading="lazy" data-error-type="original">
           <div class="image-error" style="display: none;">
             <div class="error-icon">🖼️</div>
             <div class="error-text">原图已失效</div>
@@ -402,7 +441,7 @@ function createHistoryCard(item, allowNSFW) {
         </div>
         <div class="arrow">→</div>
         <div class="image-container result">
-          <img src="${item.imageUrl}" alt="改图结果" loading="lazy" data-error-type="result">
+          <img src="${imageUrl || ''}" alt="改图结果" loading="lazy" data-error-type="result">
           <div class="image-error" style="display: none;">
             <div class="error-icon">🖼️</div>
             <div class="error-text">图片已失效</div>
@@ -416,7 +455,7 @@ function createHistoryCard(item, allowNSFW) {
   } else {
     imageHtml = `
       <div class="card-image">
-        <img src="${item.imageUrl}" alt="${escapeHtml(item.prompt)}" loading="lazy" data-error-type="single">
+        <img src="${imageUrl || ''}" alt="${escapeHtml(item.prompt)}" loading="lazy" data-error-type="single">
         <div class="image-error" style="display: none;">
           <div class="error-icon">🖼️</div>
           <div class="error-text">图片已失效</div>
@@ -598,8 +637,16 @@ async function exportSelectedImages() {
       exportBtn.textContent = `导出中 (${i + 1}/${selectedImages.length})`;
 
       try {
+        // 获取图片URL（从图片池或使用原始值）
+        const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+        if (!imageUrl) {
+          console.warn(`图片已失效 (${item.id})`);
+          failCount++;
+          continue;
+        }
+
         // 下载图片并转为 blob
-        const blob = await fetchImageBlob(item.imageUrl);
+        const blob = await fetchImageBlob(imageUrl);
 
         // 生成文件名
         const timestamp = new Date(item.createdAt).getTime();
@@ -612,15 +659,16 @@ async function exportSelectedImages() {
         successCount++;
 
         // 如果是改图操作，也导出原图
-        if (item.operationType === "edit" && item.originalImageUrl) {
+        if (item.operationType === "edit" && (item.originalImageMd5 || item.originalImageUrl)) {
           try {
-            const originalBlob = await fetchImageBlob(
-              item.originalImageUrl,
-            );
-            imgFolder.file(
-              `${timestamp}_${promptSlug}_original.png`,
-              originalBlob,
-            );
+            const originalImageUrl = await getImageUrl(item.originalImageMd5 || item.originalImageUrl);
+            if (originalImageUrl) {
+              const originalBlob = await fetchImageBlob(originalImageUrl);
+              imgFolder.file(
+                `${timestamp}_${promptSlug}_original.png`,
+                originalBlob,
+              );
+            }
           } catch (e) {
             console.warn("导出原图失败:", e);
           }
@@ -698,9 +746,17 @@ async function shareSelectedImages() {
     shareBtn.textContent = `分享中 (${i + 1}/${selectedImages.length})`;
 
     try {
+      // 获取图片URL（从图片池或使用原始值）
+      const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+      if (!imageUrl) {
+        failCount++;
+        console.warn(`图片已失效，跳过分享 (${item.id})`);
+        continue;
+      }
+
       const result = await chrome.runtime.sendMessage({
         action: 'uploadImageToAlbum',
-        imageUrl: item.imageUrl,
+        imageUrl: imageUrl,
         prompt: item.prompt
       });
 
@@ -802,13 +858,18 @@ function showFullscreenImage(imageUrl) {
   document.body.appendChild(overlay);
 }
 
-function openModal(item) {
+async function openModal(item) {
   const modal = document.getElementById("imageModal");
   const modalImage = document.getElementById("modalImage");
   const modalPrompt = document.getElementById("modalPrompt");
   const modalMeta = document.getElementById("modalMeta");
 
-  const isEdit = item.operationType === "edit" && item.originalImageUrl;
+  // 兼容新旧格式：优先使用MD5，其次是URL
+  const isEdit = item.operationType === "edit" && (item.originalImageMd5 || item.originalImageUrl);
+
+  // 获取图片URL（从图片池或使用原始值）
+  const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+  const originalImageUrl = isEdit ? await getImageUrl(item.originalImageMd5 || item.originalImageUrl) : null;
 
   const viewer = document.getElementById("modalImageViewer");
 
@@ -818,7 +879,7 @@ function openModal(item) {
       viewer.innerHTML = `
         <div style="display: flex; gap: 16px; align-items: center; justify-content: center;">
           <div style="flex: 1; text-align: center; position: relative;">
-            <img src="${item.originalImageUrl}" 
+            <img src="${originalImageUrl || ''}" 
                  style="width: 100%; border-radius: 8px; border: 1px solid #edf2f7;" 
                  alt="原图"
                  data-error-type="modal-original">
@@ -833,7 +894,7 @@ function openModal(item) {
           </div>
           <div style="font-size: 24px; color: #667eea;">→</div>
           <div style="flex: 1; text-align: center; position: relative;">
-            <img src="${item.imageUrl}" 
+            <img src="${imageUrl || ''}" 
                  style="width: 100%; border-radius: 8px; border: 1px solid #edf2f7;" 
                  alt="改图结果"
                  data-error-type="modal-result">
@@ -852,7 +913,7 @@ function openModal(item) {
       viewer.innerHTML = `
         <div style="position: relative;">
           <img id="modalImage" 
-               src="${item.imageUrl}" 
+               src="${imageUrl || ''}" 
                alt="预览图片" 
                style="width: 100%; max-height: 60vh; object-fit: contain; display: block;"
                data-error-type="modal-single">
@@ -931,14 +992,25 @@ function closeModal() {
 
 async function copyImage(item) {
   try {
-    await copyImageToClipboard(item.imageUrl);
+    // 获取图片URL（从图片池或使用原始值）
+    const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+    if (!imageUrl) {
+      showNotification("图片已失效，无法复制", "error");
+      return;
+    }
+    await copyImageToClipboard(imageUrl);
     showNotification("图片已复制到剪贴板", "success");
   } catch (error) {
     console.error("复制失败:", error);
     // 如果图片复制失败，尝试复制图片 URL
     try {
-      await navigator.clipboard.writeText(item.imageUrl);
-      showNotification("图片URL已复制到剪贴板", "success");
+      const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+      if (imageUrl) {
+        await navigator.clipboard.writeText(imageUrl);
+        showNotification("图片URL已复制到剪贴板", "success");
+      } else {
+        showNotification("复制失败，请重试", "error");
+      }
     } catch (e) {
       showNotification("复制失败，请重试", "error");
     }
@@ -955,8 +1027,14 @@ async function copyPrompt(prompt) {
   }
 }
 
-function downloadImageItem(item) {
-  downloadImage(item.imageUrl, `ai-generated-${item.id}.png`);
+async function downloadImageItem(item) {
+  // 获取图片URL（从图片池或使用原始值）
+  const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+  if (!imageUrl) {
+    showNotification("图片已失效，无法下载", "error");
+    return;
+  }
+  downloadImage(imageUrl, `ai-generated-${item.id}.png`);
 }
 
 async function deleteItem(id) {
@@ -1272,9 +1350,16 @@ async function uploadImageToAlbum(item) {
   uploadBtn.textContent = "上传中...";
 
   try {
+    // 获取图片URL（从图片池或使用原始值）
+    const imageUrl = await getImageUrl(item.imageMd5 || item.imageUrl);
+    if (!imageUrl) {
+      showNotification("图片已失效，无法上传", "error");
+      return;
+    }
+
     const result = await chrome.runtime.sendMessage({
       action: 'uploadImageToAlbum',
-      imageUrl: item.imageUrl,
+      imageUrl: imageUrl,
       prompt: item.prompt
     });
 
