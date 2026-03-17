@@ -468,6 +468,35 @@ async function sendMessageToTab(tabId, message, fallbackFunc, fallbackArgs) {
   }
 }
 
+// ==================== 迁移锁定机制 ====================
+
+/**
+ * 检查是否可以执行操作（迁移未进行中）
+ * @returns {Promise<boolean>}
+ */
+async function canPerformAction() {
+  const { migrationStatus } = await chrome.storage.local.get("migrationStatus");
+  return !migrationStatus || migrationStatus.status !== "in_progress";
+}
+
+/**
+ * 获取迁移状态消息
+ * @param {Object} migrationStatus - 迁移状态对象
+ * @returns {string} 状态消息
+ */
+function getMigrationBlockMessage(migrationStatus) {
+  if (migrationStatus?.status === "in_progress") {
+    const progress = migrationStatus.totalRecords > 0
+      ? ` (${migrationStatus.processedRecords}/${migrationStatus.totalRecords})`
+      : "";
+    return `正在迁移历史记录${progress}，请稍候...`;
+  }
+  if (migrationStatus?.status === "failed") {
+    return "迁移失败，请在设置页面重试";
+  }
+  return "请等待迁移完成";
+}
+
 // 处理图片生成
 async function handleGenerateImage(
   prompt,
@@ -479,6 +508,22 @@ async function handleGenerateImage(
 ) {
   const opText = operationType === "edit" ? "改图" : "生成图片";
 
+  // 检查迁移状态
+  if (!(await canPerformAction())) {
+    const { migrationStatus } = await chrome.storage.local.get("migrationStatus");
+    const blockMessage = getMigrationBlockMessage(migrationStatus);
+    showNotification(blockMessage, "error");
+    
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: "imageError",
+        error: blockMessage,
+        prompt: prompt,
+      }).catch(() => {});
+    }
+    return;
+  }
+
   // 如果没有 tabId，尝试获取当前活动标签页
   if (!tabId) {
     try {
@@ -489,7 +534,7 @@ async function handleGenerateImage(
       tabId = activeTab?.id;
     } catch (e) {
       console.log("获取活动标签页失败:", e);
-    }
+      }
   }
 
   // 创建请求记录
@@ -2088,6 +2133,191 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true, data: data });
       } catch (e) {
         sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  // ==================== 图片池相关消息 ====================
+  if (message.action === "getImageByMd5") {
+    (async () => {
+      try {
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        const imageUrl = await imageStore.getImage(message.md5);
+        sendResponse({ success: true, imageUrl: imageUrl });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  // ==================== 迁移状态管理相关消息 ====================
+  if (message.action === "getMigrationStatus") {
+    chrome.storage.local.get("migrationStatus").then((result) => {
+      sendResponse(result.migrationStatus || { status: "none" });
+    });
+    return true;
+  }
+  if (message.action === "startMigration") {
+    (async () => {
+      try {
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        
+        // 设置迁移状态
+        await chrome.storage.local.set({
+          migrationStatus: {
+            status: "in_progress",
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            totalRecords: 0,
+            processedRecords: 0,
+            error: null,
+          },
+        });
+
+        // 获取历史记录
+        const { history = [] } = await chrome.storage.local.get("history");
+        const totalRecords = history.length;
+
+        await chrome.storage.local.set({
+          migrationStatus: {
+            status: "in_progress",
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            totalRecords: totalRecords,
+            processedRecords: 0,
+            error: null,
+          },
+        });
+
+        let processedRecords = 0;
+
+        // 遍历历史记录进行迁移
+        for (let i = 0; i < history.length; i++) {
+          const item = history[i];
+
+          // 迁移生成图
+          if (item.imageUrl && !item.imageMd5) {
+            if (item.imageUrl.startsWith("data:")) {
+              item.imageMd5 = await imageStore.storeImage(item.imageUrl);
+              delete item.imageUrl;
+            } else if (item.imageUrl.startsWith("http")) {
+              try {
+                const base64 = await downloadImageAsBase64(item.imageUrl);
+                item.imageMd5 = await imageStore.storeImage(base64);
+                delete item.imageUrl;
+              } catch (e) {
+                console.warn("迁移图片失败:", e);
+                // 保留原URL
+                item.imageMd5 = item.imageUrl;
+              }
+            }
+          }
+
+          // 迁移原图
+          if (item.originalImageUrl && !item.originalImageMd5) {
+            if (item.originalImageUrl.startsWith("data:")) {
+              item.originalImageMd5 = await imageStore.storeImage(item.originalImageUrl);
+              delete item.originalImageUrl;
+            } else if (item.originalImageUrl.startsWith("http")) {
+              try {
+                const base64 = await downloadImageAsBase64(item.originalImageUrl);
+                item.originalImageMd5 = await imageStore.storeImage(base64);
+                delete item.originalImageUrl;
+              } catch (e) {
+                console.warn("迁移原图失败:", e);
+                item.originalImageMd5 = item.originalImageUrl;
+              }
+            }
+          }
+
+          processedRecords++;
+
+          // 更新进度（每10条更新一次）
+          if (processedRecords % 10 === 0 || processedRecords === totalRecords) {
+            const currentStatus = await chrome.storage.local.get("migrationStatus");
+            await chrome.storage.local.set({
+              migrationStatus: {
+                ...currentStatus.migrationStatus,
+                processedRecords: processedRecords,
+              },
+            });
+          }
+        }
+
+        // 保存迁移后的历史记录
+        await chrome.storage.local.set({ history });
+
+        // 更新迁移状态为完成
+        await chrome.storage.local.set({
+          migrationStatus: {
+            status: "completed",
+            startedAt: (await chrome.storage.local.get("migrationStatus")).migrationStatus.startedAt,
+            completedAt: new Date().toISOString(),
+            totalRecords: totalRecords,
+            processedRecords: processedRecords,
+            error: null,
+          },
+        });
+
+        sendResponse({ success: true, processedRecords });
+      } catch (e) {
+        // 更新迁移状态为失败
+        const currentStatus = await chrome.storage.local.get("migrationStatus");
+        await chrome.storage.local.set({
+          migrationStatus: {
+            ...currentStatus.migrationStatus,
+            status: "failed",
+            error: e.message,
+          },
+        });
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.action === "checkMigrationRequired") {
+    (async () => {
+      const { history = [] } = await chrome.storage.local.get("history");
+      const hasOldFormat = history.some(
+        (item) => item.imageUrl?.startsWith("data:") || item.originalImageUrl?.startsWith("data:")
+      );
+      sendResponse({ required: hasOldFormat });
+    })();
+    return true;
+  }
+  // ==================== 存储统计相关消息 ====================
+  if (message.action === "getStorageStats") {
+    (async () => {
+      try {
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        const stats = await imageStore.getStorageStats();
+        sendResponse({ success: true, stats });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.action === "cleanupInvalidRefs") {
+    (async () => {
+      try {
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        const cleaned = await imageStore.cleanupInvalidRefs();
+        sendResponse({ success: true, cleaned });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+  if (message.action === "rebuildRefCount") {
+    (async () => {
+      try {
+        const imageStore = await import(chrome.runtime.getURL("lib/image-store.js"));
+        const result = await imageStore.rebuildRefCount();
+        sendResponse(result);
+      } catch (e) {
+        sendResponse({ success: false, message: e.message });
       }
     })();
     return true;
