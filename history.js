@@ -1053,7 +1053,26 @@ async function deleteItem(id) {
     historyData = historyData.filter((item) => item.id !== id);
     filteredData = filteredData.filter((item) => item.id !== id);
     selectedItems.delete(id);
-    renderGallery();
+
+    // 优化：只移除被删除的卡片，而不是重新渲染整个画廊
+    const card = document.querySelector(`.history-card[data-id="${id}"]`);
+    if (card) {
+      card.remove();
+    }
+
+    // 更新计数器
+    const historyCount = document.getElementById("historyCount");
+    if (historyCount) historyCount.textContent = `${filteredData.length} 条记录`;
+
+    // 如果没有记录了，显示空状态
+    if (filteredData.length === 0) {
+      showEmptyState();
+    }
+
+    // 更新按钮状态
+    updateExportButton();
+    updateSelectAllCheckbox();
+
     showNotification("删除成功", "success");
   } catch (error) {
     console.error("删除失败:", error);
