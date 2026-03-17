@@ -485,6 +485,7 @@ async function createHistoryCard(item, allowNSFW) {
     <div class="card-actions">
       <button class="action-btn copy-btn" title="复制到剪贴板">复制</button>
       <button class="action-btn download-btn" title="下载图片">下载</button>
+      <button class="action-btn edit-btn" title="改图" style="display: none;">改图</button>
       <button class="action-btn upload-btn" title="分享到相册">分享</button>
       <button class="action-btn delete-btn" title="删除">删除</button>
     </div>
@@ -534,6 +535,10 @@ async function createHistoryCard(item, allowNSFW) {
   card.querySelector(".delete-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     deleteItem(item.id);
+  });
+  card.querySelector(".edit-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    startEditImage(item);
   });
 
   // 为图片添加错误处理事件监听器
@@ -983,6 +988,9 @@ async function openModal(item) {
 
   const uploadBtn = document.getElementById("modalUploadBtn");
   if (uploadBtn) uploadBtn.onclick = () => uploadImageToAlbum(item);
+
+  const editBtn = document.getElementById("modalEditBtn");
+  if (editBtn) editBtn.onclick = () => startEditImage(item);
 }
 
 function closeModal() {
@@ -1262,9 +1270,397 @@ async function checkUploadServiceAndShowButtons() {
     if (shareSelectedBtn) {
       shareSelectedBtn.style.display = hasActiveUploadService ? 'inline-flex' : 'none';
     }
+
+    // 检查改图服务商并显示改图按钮
+    const providers = response.providers || [];
+    const editProviders = providers.filter(p => p.serviceType === "edit");
+    const hasEditProvider = editProviders.length > 0;
+
+    // 显示或隐藏所有改图按钮
+    const editButtons = document.querySelectorAll('.edit-btn');
+    editButtons.forEach(btn => {
+      btn.style.display = hasEditProvider ? 'inline-flex' : 'none';
+    });
+
+    // 显示或隐藏模态框中的改图按钮
+    const modalEditBtn = document.getElementById("modalEditBtn");
+    if (modalEditBtn) {
+      modalEditBtn.style.display = hasEditProvider ? 'inline-flex' : 'none';
+    }
   } catch (error) {
     console.error("检查上传服务失败:", error);
   }
+}
+
+// 开始改图操作
+async function startEditImage(item) {
+  try {
+    // 获取图片数据（base64格式）
+    const imageData = await getImageUrl(item.imageMd5 || item.imageUrl);
+    if (!imageData) {
+      showNotification("图片已失效，无法改图", "error");
+      return;
+    }
+
+    // 获取改图服务商列表和上传服务配置
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const providers = response.providers || [];
+    const editProviders = providers.filter(p => p.serviceType === "edit");
+    const uploadServices = response.imageUploadServices || [];
+    const hasUploadService = uploadServices.some(s => s.isActive);
+
+    if (editProviders.length === 0) {
+      showNotification("请先配置改图服务商", "error");
+      return;
+    }
+
+    // 检查是否有需要URL的服务商（非multipart方式）
+    const urlBasedProviders = editProviders.filter(p => !p.useMultipart);
+    const needsUploadService = urlBasedProviders.length > 0 && !imageData.startsWith('http');
+
+    // 如果有需要URL的服务商，且图片不是URL格式，需要上传服务
+    if (needsUploadService && !hasUploadService) {
+      showNotification("部分改图服务商需要图片URL，请先配置图片上传服务", "error");
+      return;
+    }
+
+    // 如果只有一个服务商，直接处理
+    if (editProviders.length === 1) {
+      const provider = editProviders[0];
+      await prepareAndOpenEditDialog(imageData, provider, hasUploadService);
+      return;
+    }
+
+    // 多个服务商，显示选择对话框
+    showProviderSelectDialog(imageData, editProviders, hasUploadService);
+  } catch (error) {
+    console.error("改图操作失败:", error);
+    showNotification("改图操作失败: " + error.message, "error");
+  }
+}
+
+// 准备并打开改图对话框
+async function prepareAndOpenEditDialog(imageData, provider, hasUploadService) {
+  let finalImageUrl = imageData;
+  let isMultipart = provider.useMultipart;
+
+  // 如果服务商需要URL方式，且当前图片是base64，需要上传
+  if (!isMultipart && imageData.startsWith('data:')) {
+    if (!hasUploadService) {
+      showNotification("该服务商需要图片URL，请先配置图片上传服务", "error");
+      return;
+    }
+
+    // 显示上传提示
+    showNotification("正在上传图片到图床...", "info");
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        action: "uploadImage",
+        imageData: imageData,
+        fileName: "edit-image.png"
+      });
+
+      if (result.success) {
+        finalImageUrl = result.imageUrl;
+        showNotification("图片上传成功", "success");
+      } else {
+        throw new Error(result.error || "上传失败");
+      }
+    } catch (error) {
+      showNotification("图片上传失败: " + error.message, "error");
+      return;
+    }
+  }
+
+  openEditDialog(finalImageUrl, provider.id, provider.name, isMultipart, imageData);
+}
+
+// 显示服务商选择对话框
+function showProviderSelectDialog(imageData, providers, hasUploadService) {
+  // 移除已有的对话框
+  const existing = document.getElementById("provider-select-dialog");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "provider-select-dialog";
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.5); z-index: 999999;
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  `;
+
+  const dialog = document.createElement("div");
+  dialog.style.cssText = `
+    background: white; padding: 24px; border-radius: 16px;
+    max-width: 400px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  `;
+
+  const providerListHtml = providers.map(p => {
+    const typeHint = p.useMultipart ? " (文件上传)" : " (URL)";
+    return `
+      <button class="provider-select-item" data-id="${p.id}" data-name="${escapeHtml(p.name)} data-multipart="${p.useMultipart || false}" style="
+        width: 100%; padding: 12px 16px; margin-bottom: 8px; border: 1px solid #e2e8f0;
+        border-radius: 8px; background: #f7fafc; cursor: pointer; text-align: left;
+        font-size: 14px; color: #2d3748; transition: all 0.2s;
+      ">
+        ✏️ ${escapeHtml(p.name)}<span style="color: #718096; font-size: 12px;">${typeHint}</span>
+      </button>
+    `;
+  }).join("");
+
+  dialog.innerHTML = `
+    <h3 style="margin: 0 0 16px 0; font-size: 18px; color: #1a202c;">选择改图服务商</h3>
+    <div style="margin-bottom: 16px;">
+      ${providerListHtml}
+    </div>
+    <button id="provider-select-cancel" style="
+      width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;
+      background: white; cursor: pointer; font-size: 14px; color: #718096;
+    ">取消</button>
+  `;
+
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  // 绑定服务商选择事件
+  dialog.querySelectorAll(".provider-select-item").forEach(btn => {
+    btn.onmouseover = () => {
+      btn.style.background = "#edf2f7";
+      btn.style.borderColor = "#667eea";
+    };
+    btn.onmouseout = () => {
+      btn.style.background = "#f7fafc";
+      btn.style.borderColor = "#e2e8f0";
+    };
+    btn.onclick = async () => {
+      const providerId = btn.dataset.id;
+      const providerName = btn.dataset.name;
+      const isMultipart = btn.dataset.multipart === "true";
+      
+      // 找到对应的provider对象
+      const provider = providers.find(p => p.id === providerId);
+      if (!provider) return;
+      
+      overlay.remove();
+      await prepareAndOpenEditDialog(imageData, provider, hasUploadService);
+    };
+  });
+
+  // 取消按钮
+  dialog.querySelector("#provider-select-cancel").onclick = () => {
+    overlay.remove();
+  };
+
+  // 点击背景关闭
+  overlay.onclick = (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+    }
+  };
+}
+
+// 打开改图对话框
+function openEditDialog(imageUrl, providerId, providerName, isMultipart = false, imageData = null) {
+  // 移除已有的对话框
+  const existing = document.getElementById("ai-draw-edit-modal");
+  if (existing) existing.remove();
+
+  const container = document.createElement("div");
+  container.id = "ai-draw-edit-modal";
+  container.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 999999;
+    padding: 20px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  `;
+
+  const modal = document.createElement("div");
+  modal.style.cssText = `
+    background: white; padding: 32px; border-radius: 16px;
+    max-width: 500px; width: 100%; max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    position: relative;
+  `;
+
+  // 显示服务商类型提示
+  const typeHint = isMultipart ? " (文件上传模式)" : " (URL模式)";
+
+  modal.innerHTML = `
+    <div style="font-weight: bold; font-size: 20px; margin-bottom: 8px; color: #1a202c; display: flex; align-items: center; gap: 8px;">
+      ✏️ 改图
+    </div>
+    <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">
+      使用 ${providerName}${typeHint} 编辑图片
+    </div>
+
+    <div id="ai-edit-image-preview" style="position: relative; margin-bottom: 16px;">
+      <img src="${imageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <label style="display: block; color: #4a5568; font-size: 14px; font-weight: 500; margin-bottom: 8px;">改图提示词</label>
+      <textarea id="ai-edit-prompt" placeholder="例如：将背景改为蓝色、添加一只猫、移除文字等..." style="
+        width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;
+        font-size: 14px; font-family: inherit; resize: vertical; min-height: 100px;
+        transition: border-color 0.2s; box-sizing: border-box; color: #1a202c;
+      "></textarea>
+    </div>
+
+    <div id="ai-edit-error" style="display: none; background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
+
+    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+      <button id="ai-edit-debug" style="display: none; margin-right: auto; padding: 12px 24px; border-radius: 8px; border: 1px solid #cbd5e0; background: #f7fafc; color: #4a5568; font-size: 14px; font-weight: 500; cursor: pointer;">🐞 调试</button>
+      <button id="ai-edit-cancel" style="padding: 12px 24px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 14px; font-weight: 500; cursor: pointer;">取消</button>
+      <button id="ai-edit-submit" style="padding: 12px 24px; border-radius: 8px; border: none; background: #667eea; color: white; font-size: 14px; font-weight: 500; cursor: pointer;">开始改图</button>
+    </div>
+  `;
+
+  container.appendChild(modal);
+  document.body.appendChild(container);
+
+  const promptInput = modal.querySelector("#ai-edit-prompt");
+  const submitBtn = modal.querySelector("#ai-edit-submit");
+  const cancelBtn = modal.querySelector("#ai-edit-cancel");
+  const debugBtn = modal.querySelector("#ai-edit-debug");
+  const errorDiv = modal.querySelector("#ai-edit-error");
+
+  let debugData = null;
+  let messageHandler = null;
+
+  // 聚焦输入框
+  setTimeout(() => promptInput.focus(), 100);
+
+  // 阻止modal内部点击事件冒泡
+  modal.onclick = (e) => {
+    e.stopPropagation();
+  };
+
+  // 提交
+  submitBtn.onclick = async () => {
+    const prompt = promptInput.value.trim();
+
+    errorDiv.style.display = "none";
+    debugBtn.style.display = "none";
+    debugData = null;
+
+    if (!prompt) {
+      errorDiv.textContent = "请输入改图提示词";
+      errorDiv.style.display = "block";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "处理中...";
+
+    const timeout = setTimeout(() => {
+      errorDiv.textContent = "改图请求超时，请检查网络连接或服务商配置";
+      errorDiv.style.display = "block";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "开始改图";
+    }, 60000);
+
+    // 监听改图结果
+    messageHandler = (request) => {
+      if (request.action === "imageGenerated") {
+        clearTimeout(timeout);
+        if (request.debugData) debugData = request.debugData;
+        submitBtn.textContent = "改图成功！";
+        showNotification("改图成功！", "success");
+        setTimeout(() => container.remove(), 500);
+        // 刷新历史记录
+        loadHistory();
+      } else if (request.action === "imageError") {
+        clearTimeout(timeout);
+        if (request.debugData) {
+          debugData = request.debugData;
+          debugBtn.style.display = "inline-block";
+        }
+        errorDiv.textContent = request.error || "改图失败";
+        errorDiv.style.display = "block";
+        submitBtn.disabled = false;
+        submitBtn.textContent = "开始改图";
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(messageHandler);
+
+    try {
+      // 构建请求消息
+      const message = {
+        action: "editImage",
+        prompt: prompt,
+        providerId: providerId,
+      };
+
+      // 根据服务商类型决定如何传递图片
+      if (isMultipart && imageData) {
+        // Multipart方式：传递base64数据
+        message.useLocalFile = true;
+        message.imageData = imageData;
+        message.fileName = "edit-image.png";
+      } else {
+        // URL方式：传递图片URL
+        message.imageUrl = imageUrl;
+      }
+
+      await chrome.runtime.sendMessage(message);
+    } catch (error) {
+      clearTimeout(timeout);
+      errorDiv.textContent = "发送请求失败: " + error.message;
+      errorDiv.style.display = "block";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "开始改图";
+      if (messageHandler) {
+        chrome.runtime.onMessage.removeListener(messageHandler);
+      }
+    }
+  };
+
+  // 调试
+  debugBtn.onclick = () => {
+    if (debugData) {
+      const debugInfo = `
+调试信息
+-----------------
+服务商: ${debugData.providerName || '未知'}
+
+请求体:
+${JSON.stringify(debugData.request, null, 2)}
+
+响应数据:
+${JSON.stringify(debugData.response, null, 2)}
+      `.trim();
+      alert(debugInfo);
+    }
+  };
+
+  // 取消
+  cancelBtn.onclick = () => {
+    if (messageHandler) {
+      chrome.runtime.onMessage.removeListener(messageHandler);
+    }
+    container.remove();
+  };
+
+  // 回车提交
+  promptInput.onkeydown = (e) => {
+    if (e.key === "Enter" && e.ctrlKey) {
+      submitBtn.click();
+    }
+  };
+
+  // 点击背景关闭
+  container.onclick = (e) => {
+    if (e.target === container) {
+      if (messageHandler) {
+        chrome.runtime.onMessage.removeListener(messageHandler);
+      }
+      container.remove();
+    }
+  };
 }
 
 // 显示上传后的图片URL
