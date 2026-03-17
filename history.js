@@ -22,7 +22,25 @@ let selectedItems = new Set();
 let localNSFWSetting = null; // 本地NSFW设置，null表示使用全局设置
 let isPasswordVerified = false; // 密码是否已验证
 
+// 检查 sessionStorage 中的验证状态
+function isSessionVerified() {
+  return sessionStorage.getItem("historyPasswordVerified") === "true";
+}
+
+// 设置验证状态
+function setSessionVerified() {
+  sessionStorage.setItem("historyPasswordVerified", "true");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  // 先检查是否已在当前会话中验证过
+  if (isSessionVerified()) {
+    loadHistory();
+    setupEventListeners();
+    setupImageErrorObserver();
+    return;
+  }
+
   checkPasswordProtection().then((needsPassword) => {
     if (needsPassword) {
       showPasswordModal();
@@ -202,6 +220,7 @@ async function verifyPasswordAndUnlock() {
 
     if (isCorrect) {
       isPasswordVerified = true;
+      setSessionVerified(); // 保存验证状态到 sessionStorage
       hidePasswordModal();
       const container = document.querySelector(".container");
       if (container) container.style.display = "block";

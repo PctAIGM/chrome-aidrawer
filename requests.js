@@ -7,10 +7,224 @@ let currentFilter = "all";
 let searchQuery = "";
 let currentDetailRequest = null;
 
+// ==================== 密码保护功能 ====================
+
+/**
+ * 使用 SHA-256 哈希密码
+ * @param {string} password - 明文密码
+ * @returns {Promise<string>} 密码的 SHA-256 哈希值（十六进制字符串）
+ */
+async function hashPassword(password) {
+  if (!password) return "";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 验证密码
+ * @param {string} inputPassword - 用户输入的密码
+ * @param {string} storedHash - 存储的哈希值
+ * @returns {Promise<boolean>} 密码是否正确
+ */
+async function verifyPassword(inputPassword, storedHash) {
+  if (!storedHash) return true;
+  const inputHash = await hashPassword(inputPassword);
+  return inputHash === storedHash;
+}
+
+/**
+ * 检查是否需要密码验证
+ * @returns {Promise<boolean>} 是否需要密码验证
+ */
+async function checkPasswordProtection() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const passwordHash = response.historyPasswordHash || "";
+    return !!passwordHash;
+  } catch (error) {
+    console.error("检查密码保护状态失败:", error);
+    return false;
+  }
+}
+
+/**
+ * 检查 sessionStorage 中的验证状态
+ */
+function isSessionVerified() {
+  return sessionStorage.getItem("historyPasswordVerified") === "true";
+}
+
+/**
+ * 设置验证状态
+ */
+function setSessionVerified() {
+  sessionStorage.setItem("historyPasswordVerified", "true");
+}
+
+/**
+ * 显示密码验证模态框
+ */
+function showPasswordModal() {
+  const modal = document.getElementById("passwordModal");
+  const container = document.querySelector(".container");
+
+  if (modal) {
+    modal.style.display = "flex";
+    if (container) container.style.display = "none";
+  }
+
+  setupPasswordModalEventListeners();
+}
+
+/**
+ * 隐藏密码验证模态框
+ */
+function hidePasswordModal() {
+  const modal = document.getElementById("passwordModal");
+  if (modal) {
+    modal.style.display = "none";
+  }
+}
+
+/**
+ * 设置密码验证模态框的事件监听器
+ */
+function setupPasswordModalEventListeners() {
+  const oldVerifyPasswordBtn = document.getElementById("verifyPasswordBtn");
+  const oldVerifyPasswordInput = document.getElementById("verifyPasswordInput");
+  const oldVerifyPasswordToggle = document.getElementById("verifyPasswordToggle");
+
+  const savedInputValue = oldVerifyPasswordInput ? oldVerifyPasswordInput.value : "";
+
+  if (oldVerifyPasswordBtn) {
+    const newBtn = oldVerifyPasswordBtn.cloneNode(true);
+    oldVerifyPasswordBtn.parentNode.replaceChild(newBtn, oldVerifyPasswordBtn);
+  }
+  if (oldVerifyPasswordInput) {
+    const newInput = oldVerifyPasswordInput.cloneNode(true);
+    oldVerifyPasswordInput.parentNode.replaceChild(newInput, oldVerifyPasswordInput);
+  }
+  if (oldVerifyPasswordToggle) {
+    const newToggle = oldVerifyPasswordToggle.cloneNode(true);
+    oldVerifyPasswordToggle.parentNode.replaceChild(newToggle, oldVerifyPasswordToggle);
+  }
+
+  const verifyPasswordBtn = document.getElementById("verifyPasswordBtn");
+  const verifyPasswordInput = document.getElementById("verifyPasswordInput");
+  const verifyPasswordToggle = document.getElementById("verifyPasswordToggle");
+
+  if (verifyPasswordInput && savedInputValue) {
+    verifyPasswordInput.value = savedInputValue;
+  }
+
+  if (verifyPasswordBtn) {
+    verifyPasswordBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      verifyPasswordAndUnlock();
+    });
+  }
+
+  if (verifyPasswordInput) {
+    verifyPasswordInput.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        verifyPasswordAndUnlock();
+      }
+    });
+  }
+
+  if (verifyPasswordToggle) {
+    verifyPasswordToggle.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (verifyPasswordInput) {
+        if (verifyPasswordInput.type === "password") {
+          verifyPasswordInput.type = "text";
+          verifyPasswordToggle.textContent = "🙈";
+        } else {
+          verifyPasswordInput.type = "password";
+          verifyPasswordToggle.textContent = "👁️";
+        }
+      }
+    });
+  }
+
+  if (verifyPasswordInput) {
+    setTimeout(() => {
+      verifyPasswordInput.focus();
+    }, 0);
+  }
+}
+
+/**
+ * 验证密码并解锁
+ */
+async function verifyPasswordAndUnlock() {
+  const passwordInput = document.getElementById("verifyPasswordInput");
+  const password = passwordInput ? passwordInput.value : "";
+
+  if (!password) {
+    showVerifyPasswordMessage("请输入密码", "error");
+    return;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const passwordHash = response.historyPasswordHash || "";
+    const isCorrect = await verifyPassword(password, passwordHash);
+
+    if (isCorrect) {
+      setSessionVerified();
+      hidePasswordModal();
+      const container = document.querySelector(".container");
+      if (container) container.style.display = "block";
+
+      loadRequests();
+      setupEventListeners();
+      setupStorageListener();
+
+      showVerifyPasswordMessage("", "");
+    } else {
+      showVerifyPasswordMessage("密码错误，请重试", "error");
+      passwordInput.value = "";
+      passwordInput.focus();
+    }
+  } catch (error) {
+    console.error("密码验证失败:", error);
+    showVerifyPasswordMessage("验证失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 显示密码验证消息
+ */
+function showVerifyPasswordMessage(message, type = "info") {
+  const el = document.getElementById("verifyPasswordMessage");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "password-message " + type;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  loadRequests();
-  setupEventListeners();
-  setupStorageListener();
+  // 先检查是否已在当前会话中验证过
+  if (isSessionVerified()) {
+    loadRequests();
+    setupEventListeners();
+    setupStorageListener();
+    return;
+  }
+
+  checkPasswordProtection().then((needsPassword) => {
+    if (needsPassword) {
+      showPasswordModal();
+    } else {
+      loadRequests();
+      setupEventListeners();
+      setupStorageListener();
+    }
+  });
 });
 
 // 监听存储变化，实时更新
