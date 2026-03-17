@@ -25,6 +25,18 @@
           <input type="text" id="negativePromptInput" placeholder="输入反向提示词..."
             style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
         </div>
+        <!-- 高级参数 -->
+        <div id="advancedParamsGroup" class="input-group" style="margin-top: 8px;">
+          <button type="button" id="toggleAdvancedParamsBtn" class="toggle-advanced-btn">
+            <span class="toggle-icon">▶</span>
+            <span>高级参数</span>
+          </button>
+          <div id="advancedParamsContent" class="advanced-params-content" style="display: none;">
+            <div id="advancedParamsList" class="advanced-params-list">
+              <!-- 动态加载参数 -->
+            </div>
+          </div>
+        </div>
         <div class="provider-select">
           <label>选择服务商:</label>
           <select id="provider">

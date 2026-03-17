@@ -112,6 +112,9 @@ function onProviderChange() {
 
   // 检查是否配置了反向提示词
   checkNegativePromptAvailability();
+
+  // 加载高级参数
+  loadAdvancedParams();
 }
 
 async function checkNegativePromptAvailability() {
@@ -150,6 +153,172 @@ async function checkNegativePromptAvailability() {
   } catch (error) {
     console.error("检查反向提示词配置失败:", error);
   }
+}
+
+// 加载高级参数
+async function loadAdvancedParams() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const select = document.getElementById("provider");
+    const providerId = select.value;
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+
+    const paramsList = document.getElementById("advancedParamsList");
+    paramsList.innerHTML = "";
+
+    if (!currentProvider || !currentProvider.customParams) {
+      paramsList.innerHTML = '<div class="no-advanced-params">当前服务商无可配置的高级参数</div>';
+      return;
+    }
+
+    // 过滤掉特殊字段类型（prompt, imageUrl, negativePrompt）
+    const editableParams = [];
+    for (const [key, value] of Object.entries(currentProvider.customParams)) {
+      // 检查是否是特殊字段类型
+      if (value && typeof value === "object" && value.fieldType) {
+        if (["prompt", "imageUrl", "negativePrompt"].includes(value.fieldType)) {
+          continue;
+        }
+      }
+      editableParams.push({ key, value });
+    }
+
+    if (editableParams.length === 0) {
+      paramsList.innerHTML = '<div class="no-advanced-params">当前服务商无可配置的高级参数</div>';
+      return;
+    }
+
+    // 渲染参数控件
+    editableParams.forEach(({ key, value }) => {
+      const item = createAdvancedParamItem(key, value);
+      paramsList.appendChild(item);
+    });
+  } catch (error) {
+    console.error("加载高级参数失败:", error);
+  }
+}
+
+// 创建高级参数控件
+function createAdvancedParamItem(key, value) {
+  const div = document.createElement("div");
+  div.className = "advanced-param-item";
+
+  // 解析值
+  let actualValue = value;
+  let fieldType = "";
+  if (value && typeof value === "object" && value.value !== undefined) {
+    actualValue = value.value;
+    fieldType = value.fieldType || "";
+  }
+
+  const label = document.createElement("label");
+  label.textContent = key;
+  label.title = key;
+  div.appendChild(label);
+
+  // 根据类型创建不同的输入控件
+  if (actualValue === "__RANDOM__") {
+    // 随机数类型：显示只读提示
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "随机生成";
+    input.disabled = true;
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "random";
+    input.style.backgroundColor = "#f0f0f0";
+    div.appendChild(input);
+  } else if (typeof actualValue === "boolean") {
+    // 布尔类型：复选框
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = actualValue;
+    checkbox.dataset.paramKey = key;
+    checkbox.dataset.paramType = "bool";
+    div.appendChild(checkbox);
+  } else if (typeof actualValue === "number") {
+    // 数字类型
+    const input = document.createElement("input");
+    input.type = "number";
+    input.value = actualValue;
+    input.step = Number.isInteger(actualValue) ? "1" : "any";
+    input.dataset.paramKey = key;
+    input.dataset.paramType = Number.isInteger(actualValue) ? "int" : "float";
+    div.appendChild(input);
+  } else if (Array.isArray(actualValue)) {
+    // 数组类型：JSON字符串
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = JSON.stringify(actualValue);
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "array";
+    div.appendChild(input);
+  } else if (typeof actualValue === "object" && actualValue !== null) {
+    // 对象类型：JSON字符串
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = JSON.stringify(actualValue);
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "object";
+    div.appendChild(input);
+  } else {
+    // 字符串或其他类型
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = String(actualValue || "");
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "string";
+    div.appendChild(input);
+  }
+
+  return div;
+}
+
+// 切换高级参数显示/隐藏
+function toggleAdvancedParams() {
+  const btn = document.getElementById("toggleAdvancedParamsBtn");
+  const content = document.getElementById("advancedParamsContent");
+
+  if (content.style.display === "none") {
+    content.style.display = "block";
+    btn.classList.add("expanded");
+  } else {
+    content.style.display = "none";
+    btn.classList.remove("expanded");
+  }
+}
+
+// 收集高级参数
+function collectAdvancedParams() {
+  const params = {};
+  const inputs = document.querySelectorAll("#advancedParamsList input, #advancedParamsList select");
+
+  inputs.forEach((input) => {
+    const key = input.dataset.paramKey;
+    const type = input.dataset.paramType;
+
+    if (!key) return;
+
+    if (type === "random") {
+      params[key] = "__RANDOM__";
+    } else if (type === "bool") {
+      params[key] = input.checked;
+    } else if (type === "int") {
+      params[key] = parseInt(input.value, 10);
+    } else if (type === "float") {
+      params[key] = parseFloat(input.value);
+    } else if (type === "array" || type === "object") {
+      try {
+        params[key] = JSON.parse(input.value);
+      } catch (e) {
+        params[key] = input.value;
+      }
+    } else {
+      params[key] = input.value;
+    }
+  });
+
+  return params;
 }
 
 async function checkUploadServiceAvailability() {
@@ -235,6 +404,9 @@ function setupEventListeners() {
 
   // 提示词切换按钮
   document.getElementById("togglePromptBtn").addEventListener("click", togglePrompt);
+
+  // 高级参数展开/折叠按钮
+  document.getElementById("toggleAdvancedParamsBtn").addEventListener("click", toggleAdvancedParams);
 }
 
 async function generateImage() {
@@ -314,6 +486,9 @@ async function generateImage() {
     const negativePromptInput = document.getElementById("negativePromptInput");
     const negativePrompt = negativePromptInput && negativePromptInput.offsetParent !== null ? negativePromptInput.value.trim() : "";
 
+    // 收集高级参数
+    const advancedParams = collectAdvancedParams();
+
     // 发送生成/改图消息
     if (serviceType === "edit") {
       if (imageFile) {
@@ -327,6 +502,7 @@ async function generateImage() {
           fileName: imageFile.name,
           providerId: providerId,
           useLocalFile: true,
+          advancedParams: advancedParams,
         });
       } else {
         // 对于非multipart接口，发送URL
@@ -336,6 +512,7 @@ async function generateImage() {
           negativePrompt: negativePrompt,
           imageUrl: imageUrl,
           providerId: providerId,
+          advancedParams: advancedParams,
         });
       }
     } else {
@@ -343,6 +520,7 @@ async function generateImage() {
         action: "generateImage",
         prompt: prompt,
         negativePrompt: negativePrompt,
+        advancedParams: advancedParams,
       });
     }
 

@@ -148,3 +148,93 @@ textarea:focus {
     border: 1px solid #e2e8f0;
     margin-bottom: 16px;
 }
+
+/* 高级参数区域样式 */
+.toggle-advanced-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #f7fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #4a5568;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.toggle-advanced-btn:hover {
+    background: #edf2f7;
+}
+
+.toggle-advanced-btn .toggle-icon {
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+.toggle-advanced-btn.expanded .toggle-icon {
+    transform: rotate(90deg);
+}
+
+.advanced-params-content {
+    margin-top: 8px;
+    padding: 12px;
+    background: #f9fafb;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+
+.advanced-params-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.advanced-param-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.advanced-param-item label {
+    flex: 0 0 80px;
+    font-size: 12px;
+    color: #4a5568;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0;
+}
+
+.advanced-param-item input,
+.advanced-param-item select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.advanced-param-item input:focus,
+.advanced-param-item select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.advanced-param-item input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+}
+
+.no-advanced-params {
+    font-size: 12px;
+    color: #a0aec0;
+    text-align: center;
+    padding: 8px;
+}

@@ -517,6 +517,7 @@ async function handleGenerateImage(
   tabId,
   imageUrl = null,
   operationType = "generate",
+  advancedParamsOverrides = null,
 ) {
   const opText = operationType === "edit" ? "改图" : "生成图片";
 
@@ -583,12 +584,28 @@ async function handleGenerateImage(
   });
 
   try {
+    // 合并高级参数覆盖到 customParams
+    let mergedCustomParams = provider.customParams || {};
+    if (advancedParamsOverrides && Object.keys(advancedParamsOverrides).length > 0) {
+      // 深拷贝避免修改原始配置
+      mergedCustomParams = JSON.parse(JSON.stringify(mergedCustomParams));
+      for (const [key, overrideValue] of Object.entries(advancedParamsOverrides)) {
+        // 如果原配置是对象格式（带 fieldType），只更新 value
+        if (mergedCustomParams[key] && typeof mergedCustomParams[key] === "object" && mergedCustomParams[key].fieldType) {
+          mergedCustomParams[key].value = overrideValue;
+        } else {
+          mergedCustomParams[key] = overrideValue;
+        }
+      }
+      console.log("高级参数覆盖已应用:", advancedParamsOverrides);
+    }
+
     const config = {
       endpoint: provider.endpoint,
       apiKey: provider.key,
       responsePath: provider.responsePath,
       customHeaders: provider.customHeaders || {},
-      customParams: provider.customParams || {},
+      customParams: mergedCustomParams,
       operationType: operationType,
       imageUrl: imageUrl,
       negativePrompt: negativePrompt,
@@ -1950,7 +1967,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         tabId = activeTab?.id;
       }
 
-      await handleGenerateImage(message.prompt, message.negativePrompt, provider, tabId);
+      await handleGenerateImage(message.prompt, message.negativePrompt, provider, tabId, null, "generate", message.advancedParams);
       sendResponse({ success: true });
     })();
     return true;
@@ -2003,6 +2020,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           tabId,
           imageUrl,
           "edit",
+          message.advancedParams,
         );
         sendResponse({ success: true });
       } catch (error) {

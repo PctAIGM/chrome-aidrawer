@@ -27,6 +27,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   setupEventListeners(imageUrl, pendingEditProvider, hasUploadService);
+
+  // 加载高级参数
+  loadAdvancedParams(pendingEditProvider);
 });
 
 function setupEventListeners(imageUrl, providerId, hasUploadService) {
@@ -162,13 +165,17 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
     chrome.runtime.onMessage.addListener(messageHandler);
 
     try {
+      // 收集高级参数
+      const advancedParams = collectAdvancedParams();
+
       // 发送改图请求
       await chrome.runtime.sendMessage({
         action: 'editImage',
         prompt: prompt,
         negativePrompt: negativePrompt,
         imageUrl: currentImageUrl,
-        providerId: providerId
+        providerId: providerId,
+        advancedParams: advancedParams
       });
     } catch (error) {
       clearTimeout(timeout);
@@ -338,4 +345,168 @@ ${JSON.stringify(debugData.response, null, 2)}
       };
     }
   }
+}
+
+// 加载高级参数
+async function loadAdvancedParams(providerId) {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    const providers = response.providers || [];
+    const currentProvider = providers.find(p => p.id === providerId);
+
+    const paramsList = document.getElementById("advancedParamsList");
+    paramsList.innerHTML = "";
+
+    // 添加展开/折叠按钮事件
+    const toggleBtn = document.getElementById("toggleAdvancedParamsBtn");
+    const content = document.getElementById("advancedParamsContent");
+    
+    toggleBtn.addEventListener("click", () => {
+      if (content.style.display === "none") {
+        content.style.display = "block";
+        toggleBtn.classList.add("expanded");
+      } else {
+        content.style.display = "none";
+        toggleBtn.classList.remove("expanded");
+      }
+    });
+
+    if (!currentProvider || !currentProvider.customParams) {
+      paramsList.innerHTML = '<div class="no-advanced-params">当前服务商无可配置的高级参数</div>';
+      return;
+    }
+
+    // 过滤掉特殊字段类型（prompt, imageUrl, negativePrompt）
+    const editableParams = [];
+    for (const [key, value] of Object.entries(currentProvider.customParams)) {
+      // 检查是否是特殊字段类型
+      if (value && typeof value === "object" && value.fieldType) {
+        if (["prompt", "imageUrl", "negativePrompt"].includes(value.fieldType)) {
+          continue;
+        }
+      }
+      editableParams.push({ key, value });
+    }
+
+    if (editableParams.length === 0) {
+      paramsList.innerHTML = '<div class="no-advanced-params">当前服务商无可配置的高级参数</div>';
+      return;
+    }
+
+    // 渲染参数控件
+    editableParams.forEach(({ key, value }) => {
+      const item = createAdvancedParamItem(key, value);
+      paramsList.appendChild(item);
+    });
+  } catch (error) {
+    console.error("加载高级参数失败:", error);
+  }
+}
+
+// 创建高级参数控件
+function createAdvancedParamItem(key, value) {
+  const div = document.createElement("div");
+  div.className = "advanced-param-item";
+
+  // 解析值
+  let actualValue = value;
+  let fieldType = "";
+  if (value && typeof value === "object" && value.value !== undefined) {
+    actualValue = value.value;
+    fieldType = value.fieldType || "";
+  }
+
+  const label = document.createElement("label");
+  label.textContent = key;
+  label.title = key;
+  div.appendChild(label);
+
+  // 根据类型创建不同的输入控件
+  if (actualValue === "__RANDOM__") {
+    // 随机数类型：显示只读提示
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "随机生成";
+    input.disabled = true;
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "random";
+    input.style.backgroundColor = "#f0f0f0";
+    div.appendChild(input);
+  } else if (typeof actualValue === "boolean") {
+    // 布尔类型：复选框
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = actualValue;
+    checkbox.dataset.paramKey = key;
+    checkbox.dataset.paramType = "bool";
+    div.appendChild(checkbox);
+  } else if (typeof actualValue === "number") {
+    // 数字类型
+    const input = document.createElement("input");
+    input.type = "number";
+    input.value = actualValue;
+    input.step = Number.isInteger(actualValue) ? "1" : "any";
+    input.dataset.paramKey = key;
+    input.dataset.paramType = Number.isInteger(actualValue) ? "int" : "float";
+    div.appendChild(input);
+  } else if (Array.isArray(actualValue)) {
+    // 数组类型：JSON字符串
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = JSON.stringify(actualValue);
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "array";
+    div.appendChild(input);
+  } else if (typeof actualValue === "object" && actualValue !== null) {
+    // 对象类型：JSON字符串
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = JSON.stringify(actualValue);
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "object";
+    div.appendChild(input);
+  } else {
+    // 字符串或其他类型
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = String(actualValue || "");
+    input.dataset.paramKey = key;
+    input.dataset.paramType = "string";
+    div.appendChild(input);
+  }
+
+  return div;
+}
+
+// 收集高级参数
+function collectAdvancedParams() {
+  const params = {};
+  const inputs = document.querySelectorAll("#advancedParamsList input, #advancedParamsList select");
+
+  inputs.forEach((input) => {
+    const key = input.dataset.paramKey;
+    const type = input.dataset.paramType;
+
+    if (!key) return;
+
+    if (type === "random") {
+      params[key] = "__RANDOM__";
+    } else if (type === "bool") {
+      params[key] = input.checked;
+    } else if (type === "int") {
+      params[key] = parseInt(input.value, 10);
+    } else if (type === "float") {
+      params[key] = parseFloat(input.value);
+    } else if (type === "array" || type === "object") {
+      try {
+        params[key] = JSON.parse(input.value);
+      } catch (e) {
+        params[key] = input.value;
+      }
+    } else {
+      params[key] = input.value;
+    }
+  });
+
+  return params;
 }
