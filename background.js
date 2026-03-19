@@ -913,6 +913,28 @@ async function generateWithCustomAPI(prompt, config) {
         } else if (value.fieldType === "imageUrl" && imageUrl) {
           // 图片URL字段（仅改图时）
           finalValue = imageUrl;
+        } else if (value.fieldType === "imageBase64" && imageUrl) {
+          // 图片Base64字段（仅改图时，将URL转换为base64）
+          if (imageUrl.startsWith('data:')) {
+            // 已经是base64格式
+            finalValue = imageUrl;
+          } else {
+            // 需要将URL转换为base64
+            try {
+              console.log("将图片URL转换为base64格式...");
+              finalValue = await downloadImageAsBase64(imageUrl);
+              console.log("图片转换成功");
+            } catch (error) {
+              console.error("图片转换失败:", error);
+              const err = new Error(`无法将图片转换为base64格式: ${error.message}`);
+              err.debugData = {
+                providerName: config.name,
+                request: { imageUrl: imageUrl?.substring(0, 100) + "...", operationType },
+                response: { error: error.message },
+              };
+              throw err;
+            }
+          }
         } else if (value.fieldType === "negativePrompt") {
           // 反向提示词字段
           finalValue = negativePrompt !== undefined && negativePrompt !== "" ? negativePrompt : value.value;

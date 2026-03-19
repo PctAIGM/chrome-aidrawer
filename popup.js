@@ -176,12 +176,12 @@ async function loadAdvancedParams() {
       return;
     }
 
-    // 过滤掉特殊字段类型（prompt, imageUrl, negativePrompt）
+    // 过滤掉特殊字段类型（prompt, imageUrl, imageBase64, negativePrompt）
     const editableParams = [];
     for (const [key, value] of Object.entries(currentProvider.customParams)) {
       // 检查是否是特殊字段类型
       if (value && typeof value === "object" && value.fieldType) {
-        if (["prompt", "imageUrl", "negativePrompt"].includes(value.fieldType)) {
+        if (["prompt", "imageUrl", "imageBase64", "negativePrompt"].includes(value.fieldType)) {
           continue;
         }
       }
@@ -337,30 +337,45 @@ async function checkUploadServiceAvailability() {
     const providers = response.providers || [];
     const currentProvider = providers.find(p => p.id === providerId);
     const useMultipart = currentProvider?.useMultipart;
+    
+    // 检查是否配置了imageBase64字段类型
+    const hasImageBase64Field = currentProvider?.customParams && 
+      Object.values(currentProvider.customParams).some(
+        v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
+      );
 
     const uploadTab = document.getElementById("uploadTab");
     const historyTab = document.getElementById("historyTab");
     const uploadImageBtn = document.getElementById("uploadImageBtn");
+    const uploadHistoryImageBtn = document.getElementById("uploadHistoryImageBtn");
 
     // 历史记录选项卡始终显示（在改图模式下）
     historyTab.style.display = "block";
 
-    if (useMultipart) {
-      // multipart接口：总是显示上传选项卡，不需要图床
+    if (useMultipart || hasImageBase64Field) {
+      // multipart接口或imageBase64字段：总是显示上传选项卡，不需要图床
       uploadTab.style.display = "block";
       if (uploadImageBtn) {
         uploadImageBtn.style.display = "none"; // 隐藏上传到图床按钮
       }
+      if (uploadHistoryImageBtn) {
+        uploadHistoryImageBtn.style.display = "none"; // 隐藏历史记录的上传到图床按钮
+      }
       // 更新提示文字
       const hint = document.querySelector("#uploadSection .hint");
       if (hint) {
-        hint.textContent = "multipart接口直接使用本地文件，无需上传到图床";
+        hint.textContent = useMultipart ? 
+          "multipart接口直接使用本地文件，无需上传到图床" : 
+          "imageBase64字段直接使用本地文件，无需上传到图床";
       }
     } else if (hasActiveUploadService) {
-      // 非multipart接口：需要图床服务
+      // 非multipart接口且无imageBase64字段：需要图床服务
       uploadTab.style.display = "block";
       if (uploadImageBtn) {
         uploadImageBtn.style.display = "block"; // 显示上传到图床按钮
+      }
+      if (uploadHistoryImageBtn) {
+        uploadHistoryImageBtn.style.display = "block"; // 显示历史记录的上传到图床按钮
       }
       // 恢复原始提示文字
       const hint = document.querySelector("#uploadSection .hint");
@@ -368,7 +383,7 @@ async function checkUploadServiceAvailability() {
         hint.textContent = "改图服务需要提供图片";
       }
     } else {
-      // 没有图床服务且不是multipart
+      // 没有图床服务且不是multipart且无imageBase64字段
       uploadTab.style.display = "none";
       // 如果没有上传服务，强制切换到URL输入模式
       switchToUrlTab();
@@ -456,6 +471,12 @@ async function generateImage() {
     const providers = response.providers || [];
     const currentProvider = providers.find(p => p.id === providerId);
     const useMultipart = currentProvider?.useMultipart;
+    
+    // 检查是否配置了imageBase64字段类型
+    const hasImageBase64Field = currentProvider?.customParams && 
+      Object.values(currentProvider.customParams).some(
+        v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
+      );
 
     // 检查当前活动的选项卡
     const urlTab = document.getElementById("urlTab");
@@ -466,7 +487,7 @@ async function generateImage() {
     const isUploadMode = uploadTab.classList.contains("active");
     const isHistoryMode = historyTab.classList.contains("active");
 
-    console.log("改图模式 - URL模式:", isUrlMode, "上传模式:", isUploadMode, "历史记录模式:", isHistoryMode, "使用multipart:", useMultipart);
+    console.log("改图模式 - URL模式:", isUrlMode, "上传模式:", isUploadMode, "历史记录模式:", isHistoryMode, "使用multipart:", useMultipart, "imageBase64字段:", hasImageBase64Field);
 
     if (isUrlMode) {
       imageUrl = document.getElementById("imageUrlInput").value.trim();
@@ -482,8 +503,8 @@ async function generateImage() {
         return;
       }
       
-      if (useMultipart) {
-        // multipart模式：使用base64数据
+      if (useMultipart || hasImageBase64Field) {
+        // multipart模式或imageBase64字段：使用base64数据
         if (selectedHistoryImageData) {
           // 直接使用base64数据
           imageFile = { 
@@ -491,20 +512,24 @@ async function generateImage() {
             type: "image/png",
             dataUrl: selectedHistoryImageData 
           };
-          console.log("使用历史记录图片(base64)，multipart模式");
+          console.log("使用历史记录图片(base64)，multipart或imageBase64模式");
         } else if (selectedHistoryImageUrl.startsWith("data:")) {
           imageFile = { 
             name: "history-image.png",
             type: "image/png",
             dataUrl: selectedHistoryImageUrl 
           };
-          console.log("使用历史记录图片(base64 URL)，multipart模式");
+          console.log("使用历史记录图片(base64 URL)，multipart或imageBase64模式");
+        } else if (hasImageBase64Field) {
+          // imageBase64模式但图片是URL，需要下载转换（后续在background中处理）
+          imageUrl = selectedHistoryImageUrl;
+          console.log("使用历史记录图片(URL)，imageBase64模式将在后台转换");
         } else {
           showError("历史记录图片格式不支持multipart模式");
           return;
         }
       } else {
-        // 非multipart模式：需要URL
+        // 非multipart模式且无imageBase64字段：需要URL
         if (uploadedHistoryImageUrl) {
           // 已上传到图床
           imageUrl = uploadedHistoryImageUrl;
@@ -526,13 +551,17 @@ async function generateImage() {
         // multipart接口：直接使用本地文件
         imageFile = fileInput.files[0];
         console.log("使用multipart模式，直接使用本地文件:", imageFile.name);
-      } else if (!useMultipart && uploadedImageUrl) {
-        // 非multipart接口：使用上传后的URL
+      } else if (hasImageBase64Field && fileInput.files.length > 0) {
+        // imageBase64字段：直接使用本地文件（转换为base64）
+        imageFile = fileInput.files[0];
+        console.log("使用imageBase64模式，直接使用本地文件:", imageFile.name);
+      } else if (!useMultipart && !hasImageBase64Field && uploadedImageUrl) {
+        // 非multipart接口且无imageBase64字段：使用上传后的URL
         imageUrl = uploadedImageUrl;
         console.log("使用非multipart模式，图片URL:", imageUrl);
       } else {
         // 错误情况
-        if (useMultipart) {
+        if (useMultipart || hasImageBase64Field) {
           showError("请先选择图片文件");
         } else {
           if (fileInput.files.length > 0) {

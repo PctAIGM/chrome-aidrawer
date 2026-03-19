@@ -1915,6 +1915,7 @@ async function uploadToWebDAV() {
         exportSettings.configVersion = 1;
       }
       data = JSON.stringify(exportSettings, null, 2);
+      showStatus(`配置已导出（未加密，版本号：${exportSettings.configVersion}）`, "info");
     }
 
     const result = await chrome.runtime.sendMessage({
@@ -3451,10 +3452,3 @@ function showMigrationStatus(message, type = "info") {
   el.className = "status " + type;
   // 不自动清除，让用户手动看到
 }
-
-// 在 DOMContentLoaded 中初始化迁移管理
-document.addEventListener("DOMContentLoaded", () => {
-  loadSettings();
-  setupEventListeners();
-  initMigrationManager();
-});

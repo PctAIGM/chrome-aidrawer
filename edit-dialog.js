@@ -9,30 +9,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 获取待处理的provider ID
   const { pendingEditProvider } = await chrome.storage.local.get('pendingEditProvider');
 
-  // 检查是否配置了图片上传服务
+  // 获取设置
   const settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
   const uploadServices = settings?.imageUploadServices || [];
   const hasUploadService = uploadServices.some(service => service.isActive);
+
+  // 检查provider是否配置了imageBase64字段类型
+  const providers = settings?.providers || [];
+  const currentProvider = providers.find(p => p.id === pendingEditProvider);
+  const hasImageBase64Field = currentProvider?.customParams && 
+    Object.values(currentProvider.customParams).some(
+      v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
+    );
 
   if (imageUrl) {
     const preview = document.getElementById('imagePreview');
     preview.src = imageUrl;
     preview.style.display = 'block';
-  } else if (hasUploadService) {
-    // 没有右键图片但有上传服务，显示文件选择
+  } else if (hasUploadService || hasImageBase64Field) {
+    // 没有右键图片但有上传服务或配置了imageBase64字段，显示文件选择
     const imageSelectSection = document.getElementById('imageSelectSection');
     if (imageSelectSection) {
       imageSelectSection.style.display = 'block';
     }
+
+    // 如果没有上传服务但配置了imageBase64，隐藏上传按钮
+    const uploadImageBtn = document.getElementById('uploadImageBtn');
+    if (uploadImageBtn && !hasUploadService && hasImageBase64Field) {
+      uploadImageBtn.style.display = 'none';
+    }
   }
 
-  setupEventListeners(imageUrl, pendingEditProvider, hasUploadService);
+  setupEventListeners(imageUrl, pendingEditProvider, hasUploadService, hasImageBase64Field);
 
   // 加载高级参数
   loadAdvancedParams(pendingEditProvider);
 });
 
-function setupEventListeners(imageUrl, providerId, hasUploadService) {
+function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBase64Field) {
   const promptInput = document.getElementById('promptInput');
   const submitBtn = document.getElementById('submitBtn');
   const cancelBtn = document.getElementById('cancelBtn');
@@ -100,6 +114,41 @@ function setupEventListeners(imageUrl, providerId, hasUploadService) {
       } finally {
         uploadImageBtn.disabled = false;
         uploadImageBtn.textContent = '上传图片';
+      }
+    });
+  }
+
+  // 当配置了imageBase64字段时，允许选择本地图片直接使用
+  if (hasImageBase64Field && imageFileInput) {
+    imageFileInput.addEventListener('change', async () => {
+      const file = imageFileInput.files[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        showUploadStatus('请选择图片文件', 'error');
+        return;
+      }
+
+      try {
+        // 将文件转换为base64
+        const base64 = await fileToBase64(file);
+        currentImageUrl = base64;
+
+        // 更新预览
+        const preview = document.getElementById('imagePreview');
+        preview.src = currentImageUrl;
+        preview.style.display = 'block';
+
+        // 隐藏文件选择区域
+        const imageSelectSection = document.getElementById('imageSelectSection');
+        if (imageSelectSection) {
+          imageSelectSection.style.display = 'none';
+        }
+
+        showUploadStatus('图片已选择（Base64格式）', 'success');
+      } catch (error) {
+        console.error('图片读取失败:', error);
+        showUploadStatus('图片读取失败: ' + error.message, 'error');
       }
     });
   }
@@ -376,12 +425,12 @@ async function loadAdvancedParams(providerId) {
       return;
     }
 
-    // 过滤掉特殊字段类型（prompt, imageUrl, negativePrompt）
+    // 过滤掉特殊字段类型（prompt, imageUrl, imageBase64, negativePrompt）
     const editableParams = [];
     for (const [key, value] of Object.entries(currentProvider.customParams)) {
       // 检查是否是特殊字段类型
       if (value && typeof value === "object" && value.fieldType) {
-        if (["prompt", "imageUrl", "negativePrompt"].includes(value.fieldType)) {
+        if (["prompt", "imageUrl", "imageBase64", "negativePrompt"].includes(value.fieldType)) {
           continue;
         }
       }
