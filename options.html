@@ -32,6 +32,10 @@
                         <span class="nav-icon">📤</span>
                         <span>图片上传</span>
                     </button>
+                    <button class="nav-item" data-tab="analyze">
+                        <span class="nav-icon">🔍</span>
+                        <span>图片分析</span>
+                    </button>
                     <button class="nav-item" data-tab="backup">
                         <span class="nav-icon">💾</span>
                         <span>备份</span>
@@ -463,6 +467,127 @@
                             </ul>
                         </div>
                     </details>
+                </section>
+
+                <!-- 图片分析标签页 -->
+                <section id="tab-analyze" class="tab-content">
+                    <!-- 分析服务商管理 -->
+                    <div class="section-upload-services">
+                        <div class="section-header">
+                            <h2>🔍 图片分析服务商</h2>
+                            <button id="addAnalyzeProviderBtn" class="btn primary small round">
+                                <span class="icon">➕</span> 添加
+                            </button>
+                        </div>
+                        <div id="analyzeProvidersList" class="providers-list">
+                            <!-- 分析服务商列表将通过JS动态生成 -->
+                        </div>
+                        <div id="noAnalyzeProvidersMessage" class="no-providers-message">
+                            <p>暂无分析服务商配置</p>
+                            <p>点击右上角 "添加" 按钮配置第一个分析服务商</p>
+                        </div>
+                    </div>
+
+                    <!-- 添加/编辑分析服务商表单 -->
+                    <div id="analyzeProviderFormSection" class="card form-card" style="display: none">
+                        <h2 id="analyzeFormTitle">添加分析服务商</h2>
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="analyzeProviderName">服务名称 *</label>
+                                <input type="text" id="analyzeProviderName" placeholder="例如: OpenAI GPT-4o" />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="analyzeProviderUrl">API 基础地址 *</label>
+                                <input type="url" id="analyzeProviderUrl"
+                                    placeholder="https://api.openai.com" />
+                                <span class="hint">只需填写基础地址，系统会自动补全路径</span>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="analyzeProviderApiKey">API Key *</label>
+                                <input type="password" id="analyzeProviderApiKey" placeholder="sk-..." />
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="analyzeProviderModel">模型 *</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="text" id="analyzeProviderModel" placeholder="gpt-4o"
+                                        style="flex: 1;" />
+                                    <button class="btn secondary small" id="fetchAnalyzeModelsBtn" type="button">🔄 获取</button>
+                                </div>
+                                <span class="hint">支持视觉的模型如：gpt-4o、claude-3-opus、gemini-pro-vision</span>
+                            </div>
+
+                            <!-- 高级参数（折叠） -->
+                            <div class="form-group full-width">
+                                <label class="checkbox-label" id="analyzeAdvancedToggle" style="cursor: pointer;">
+                                    <span style="font-size: 14px;">▶</span>
+                                    <span style="margin-left: 6px;">高级参数</span>
+                                </label>
+                                <div id="analyzeAdvancedParams" style="display: none; margin-top: 12px; padding: 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-tertiary);">
+                                    <div class="form-group" style="margin-bottom: 12px;">
+                                        <label>Temperature (温度)</label>
+                                        <input type="number" id="analyzeProviderTemperature" placeholder="0.7" value="0.7" step="0.1" min="0" max="2" />
+                                        <span class="hint">0-2之间，值越大回复越随机（默认 0.7）</span>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 12px;">
+                                        <label>Max Tokens (最大长度)</label>
+                                        <input type="number" id="analyzeProviderMaxTokens" placeholder="2000" value="2000" min="1" />
+                                        <span class="hint">单次回复生成的最大 Tokens 数量（默认 2000）</span>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 12px;">
+                                        <label>Top P</label>
+                                        <input type="number" id="analyzeProviderTopP" placeholder="留空使用默认值" step="0.1" min="0" max="1" />
+                                        <span class="hint">核采样参数，0-1之间（通常与 Temperature 只调整其一）</span>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 12px;">
+                                        <label>Presence Penalty (存在惩罚)</label>
+                                        <input type="number" id="analyzeProviderPresencePenalty" placeholder="留空不配置" step="0.1" min="-2" max="2" />
+                                        <span class="hint">-2.0 到 2.0 之间，正值鼓励模型提及新话题</span>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Frequency Penalty (频率惩罚)</label>
+                                        <input type="number" id="analyzeProviderFrequencyPenalty" placeholder="留空不配置" step="0.1" min="-2" max="2" />
+                                        <span class="hint">-2.0 到 2.0 之间，正值惩罚重复用词</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions right">
+                            <button id="cancelAnalyzeProviderBtn" class="btn text-btn">
+                                取消
+                            </button>
+                            <button id="saveAnalyzeProviderBtn" class="btn primary">
+                                保存
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 系统提示词 -->
+                    <div class="card settings-card" style="margin-top: 24px;">
+                        <h2>📝 系统提示词</h2>
+                        <p class="hint" style="margin-bottom: 12px;">用于指导 AI 如何分析图片并生成提示词（所有分析服务商共用）</p>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <textarea id="analyzeSystemPrompt" rows="10" placeholder="自定义系统提示词..."></textarea>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                                <span class="hint">留空则使用默认提示词</span>
+                                <button class="btn secondary small" id="resetPromptBtn" type="button">恢复默认</button>
+                            </div>
+                        </div>
+                        <button class="btn primary" id="saveSystemPromptBtn" style="width: 100%; margin-top: 16px;">
+                            💾 保存提示词
+                        </button>
+                    </div>
+
+                    <!-- 打开分析页面 -->
+                    <div class="card settings-card" style="margin-top: 24px; text-align: center;">
+                        <p style="color: var(--text-secondary); margin-bottom: 12px;">配置完成后，前往分析页面上传图片</p>
+                        <a href="analyze.html" class="btn primary" style="text-decoration: none;">
+                            🔍 打开图片分析页面
+                        </a>
+                    </div>
                 </section>
 
                 <!-- 备份标签页 -->

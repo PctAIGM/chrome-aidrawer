@@ -48,7 +48,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["lib/common.js", "lib/image-utils.js", "lib/image-store.js", "requests.html"],
+      "resources": ["lib/common.js", "lib/image-utils.js", "lib/image-store.js", "lib/analyze.js", "requests.html"],
       "matches": ["<all_urls>"]
     }
   ],

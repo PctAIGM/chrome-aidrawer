@@ -64,6 +64,8 @@ let currentProviderId = null;
 let editingUploadServiceId = null;
 let currentUploadServiceId = null;
 let editingTemplateId = null;
+let editingAnalyzeProviderId = null;
+let currentAnalyzeProviderId = null;
 
 // 待导入的配置数据（用于部分导入）
 let pendingImportData = null;
@@ -136,6 +138,20 @@ function applySettingsToUI(settings) {
   renderUploadServicesList(uploadServices);
 
   renderProvidersList(settings.providers || []);
+
+  // 图片分析服务配置回显
+  const analyzeProviders = settings.analyzeProviders || [];
+  if (analyzeProviders.length > 0) {
+    const activeAnalyzeProvider = analyzeProviders.find(p => p.isCurrent);
+    if (activeAnalyzeProvider) currentAnalyzeProviderId = activeAnalyzeProvider.id;
+  }
+  renderAnalyzeProvidersList(analyzeProviders);
+
+  // 分析系统提示词回显
+  const analyzeSystemPromptEl = document.getElementById("analyzeSystemPrompt");
+  if (analyzeSystemPromptEl) {
+    analyzeSystemPromptEl.value = settings.analyzeSystemPrompt || "";
+  }
 
   if (currentProviderId) {
     const active = settings.providers.find((p) => p.id === currentProviderId);
@@ -399,6 +415,32 @@ function setupEventListeners() {
   if (setPasswordBtn) setPasswordBtn.addEventListener("click", setPassword);
   if (changePasswordBtn) changePasswordBtn.addEventListener("click", changePassword);
   if (clearPasswordBtn) clearPasswordBtn.addEventListener("click", clearPassword);
+
+  // 图片分析服务商管理按钮
+  const addAnalyzeProviderBtn = document.getElementById("addAnalyzeProviderBtn");
+  const saveAnalyzeProviderBtn = document.getElementById("saveAnalyzeProviderBtn");
+  const cancelAnalyzeProviderBtn = document.getElementById("cancelAnalyzeProviderBtn");
+  const fetchAnalyzeModelsBtn = document.getElementById("fetchAnalyzeModelsBtn");
+  const saveSystemPromptBtn = document.getElementById("saveSystemPromptBtn");
+  const resetPromptBtn = document.getElementById("resetPromptBtn");
+  const analyzeAdvancedToggle = document.getElementById("analyzeAdvancedToggle");
+
+  if (addAnalyzeProviderBtn) addAnalyzeProviderBtn.addEventListener("click", () => showAnalyzeProviderForm());
+  if (saveAnalyzeProviderBtn) saveAnalyzeProviderBtn.addEventListener("click", saveAnalyzeProvider);
+  if (cancelAnalyzeProviderBtn) cancelAnalyzeProviderBtn.addEventListener("click", hideAnalyzeProviderForm);
+  if (fetchAnalyzeModelsBtn) fetchAnalyzeModelsBtn.addEventListener("click", fetchAnalyzeModels);
+  if (saveSystemPromptBtn) saveSystemPromptBtn.addEventListener("click", saveAnalyzeSystemPrompt);
+  if (resetPromptBtn) resetPromptBtn.addEventListener("click", resetAnalyzeSystemPrompt);
+  if (analyzeAdvancedToggle) {
+    analyzeAdvancedToggle.addEventListener("click", () => {
+      const params = document.getElementById("analyzeAdvancedParams");
+      if (params) {
+        const isHidden = params.style.display === "none";
+        params.style.display = isHidden ? "block" : "none";
+        analyzeAdvancedToggle.querySelector("span:first-child").textContent = isHidden ? "▼" : "▶";
+      }
+    });
+  }
 
   // 密码可见性切换
   setupPasswordToggle();
@@ -1457,6 +1499,7 @@ function showImportPreviewModal(imported) {
   const configItems = [
     { key: "providers", label: "API 服务商", icon: "🔌", countKey: "length" },
     { key: "imageUploadServices", label: "图片上传服务", icon: "📤", countKey: "length" },
+    { key: "analyzeProviders", label: "图片分析服务商", icon: "🔍", countKey: "length" },
     { key: "webdav", label: "WebDAV 配置", icon: "☁️", isGroup: true, 
       keys: ["webdavUrl", "webdavUsername", "webdavPassword", "webdavFilename", "webdavAutoSync"] },
     { key: "maxHistory", label: "最大历史记录数", icon: "📊", isSingle: true },
@@ -1634,7 +1677,7 @@ async function executePartialImport() {
       const importedValue = pendingImportData[key];
 
       // 对于数组类型的配置，支持合并模式
-      if (key === "providers" || key === "imageUploadServices") {
+      if (key === "providers" || key === "imageUploadServices" || key === "analyzeProviders") {
         if (mergeMode && Array.isArray(currentSettings[key]) && Array.isArray(importedValue)) {
           // 合并模式：保留现有配置，添加新项（根据 ID 去重）
           const existingIds = new Set(currentSettings[key].map(item => item.id));
@@ -3451,4 +3494,323 @@ function showMigrationStatus(message, type = "info") {
   el.textContent = message;
   el.className = "status " + type;
   // 不自动清除，让用户手动看到
+}
+
+// ==================== 图片分析服务商管理 ====================
+
+function renderAnalyzeProvidersList(providers) {
+  const container = document.getElementById("analyzeProvidersList");
+  const noMessage = document.getElementById("noAnalyzeProvidersMessage");
+
+  if (!providers || providers.length === 0) {
+    if (container) container.style.display = "none";
+    if (noMessage) noMessage.style.display = "block";
+    return;
+  }
+
+  if (container) container.style.display = "grid";
+  if (noMessage) noMessage.style.display = "none";
+
+  if (container) {
+    container.innerHTML = "";
+    providers.forEach((provider) => {
+      const item = createAnalyzeProviderItem(provider);
+      container.appendChild(item);
+    });
+  }
+}
+
+function createAnalyzeProviderItem(provider) {
+  const template = document.getElementById("providerItemTemplate");
+  const clone = template.content.cloneNode(true);
+
+  const div = clone.querySelector(".provider-item");
+  div.dataset.id = provider.id;
+
+  if (provider.id === currentAnalyzeProviderId) {
+    div.classList.add("active");
+    const badge = div.querySelector(".provider-status-badge");
+    if (badge) badge.style.display = "block";
+  }
+
+  div.querySelector(".provider-name").textContent = provider.name;
+  div.querySelector(".provider-endpoint").textContent = provider.model || "";
+  div.querySelector(".provider-endpoint").title = provider.model || "";
+
+  const btnEdit = div.querySelector(".btn-edit");
+  if (btnEdit) {
+    btnEdit.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editAnalyzeProvider(provider.id);
+    });
+  }
+
+  const btnDelete = div.querySelector(".btn-delete");
+  if (btnDelete) {
+    btnDelete.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteAnalyzeProvider(provider.id);
+    });
+  }
+
+  // 隐藏测试按钮（分析服务商不需要测试按钮）
+  const btnTest = div.querySelector(".btn-test");
+  if (btnTest) btnTest.style.display = "none";
+  // 隐藏复制按钮
+  const btnCopy = div.querySelector(".btn-copy");
+  if (btnCopy) btnCopy.style.display = "none";
+
+  div.addEventListener("click", () => useAnalyzeProvider(provider.id));
+
+  return clone;
+}
+
+function showAnalyzeProviderForm(provider = null) {
+  clearAnalyzeProviderForm();
+
+  const section = document.getElementById("analyzeProviderFormSection");
+  const title = document.getElementById("analyzeFormTitle");
+  if (!section) return;
+
+  editingAnalyzeProviderId = provider ? provider.id : null;
+
+  if (provider) {
+    if (title) title.textContent = "编辑分析服务商";
+    document.getElementById("analyzeProviderName").value = provider.name || "";
+    document.getElementById("analyzeProviderUrl").value = (provider.url || "").replace(/\/v1\/chat\/completions$/, "").replace(/\/$/, "");
+    document.getElementById("analyzeProviderApiKey").value = provider.apiKey || "";
+    document.getElementById("analyzeProviderModel").value = provider.model || "";
+    document.getElementById("analyzeProviderTemperature").value = provider.temperature ?? 0.7;
+    document.getElementById("analyzeProviderMaxTokens").value = provider.maxTokens ?? 2000;
+    document.getElementById("analyzeProviderTopP").value = provider.topP ?? "";
+    document.getElementById("analyzeProviderPresencePenalty").value = provider.presencePenalty ?? "";
+    document.getElementById("analyzeProviderFrequencyPenalty").value = provider.frequencyPenalty ?? "";
+  } else {
+    if (title) title.textContent = "添加分析服务商";
+    clearAnalyzeProviderForm();
+  }
+
+  section.style.display = "block";
+  section.scrollIntoView({ behavior: "smooth" });
+}
+
+function hideAnalyzeProviderForm() {
+  const section = document.getElementById("analyzeProviderFormSection");
+  if (section) section.style.display = "none";
+  editingAnalyzeProviderId = null;
+  clearAnalyzeProviderForm();
+}
+
+function clearAnalyzeProviderForm() {
+  ["analyzeProviderName", "analyzeProviderUrl", "analyzeProviderApiKey", "analyzeProviderModel"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  document.getElementById("analyzeProviderTemperature").value = "0.7";
+  document.getElementById("analyzeProviderMaxTokens").value = "2000";
+  document.getElementById("analyzeProviderTopP").value = "";
+  document.getElementById("analyzeProviderPresencePenalty").value = "";
+  document.getElementById("analyzeProviderFrequencyPenalty").value = "";
+
+  // 折叠高级参数
+  const params = document.getElementById("analyzeAdvancedParams");
+  if (params) params.style.display = "none";
+  const toggle = document.getElementById("analyzeAdvancedToggle");
+  if (toggle) toggle.querySelector("span:first-child").textContent = "▶";
+}
+
+async function saveAnalyzeProvider() {
+  const name = document.getElementById("analyzeProviderName").value.trim();
+  let url = document.getElementById("analyzeProviderUrl").value.trim();
+  const apiKey = document.getElementById("analyzeProviderApiKey").value.trim();
+  const model = document.getElementById("analyzeProviderModel").value.trim();
+
+  // 高级参数
+  const temperature = parseFloat(document.getElementById("analyzeProviderTemperature").value);
+  const maxTokens = parseInt(document.getElementById("analyzeProviderMaxTokens").value);
+  const topP = document.getElementById("analyzeProviderTopP").value;
+  const presencePenalty = document.getElementById("analyzeProviderPresencePenalty").value;
+  const frequencyPenalty = document.getElementById("analyzeProviderFrequencyPenalty").value;
+
+  if (!name || !url || !apiKey || !model) {
+    showStatus("请填写所有必填项", "error");
+    return;
+  }
+
+  // 自动补全路径
+  if (!url.endsWith("/v1/chat/completions")) {
+    url = url.replace(/\/$/, "") + "/v1/chat/completions";
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    let providers = response.analyzeProviders || [];
+
+    const providerData = {
+      name,
+      url,
+      apiKey,
+      model,
+      temperature: isNaN(temperature) ? 0.7 : temperature,
+      maxTokens: isNaN(maxTokens) ? 2000 : maxTokens,
+      topP: topP !== "" ? parseFloat(topP) : undefined,
+      presencePenalty: presencePenalty !== "" ? parseFloat(presencePenalty) : undefined,
+      frequencyPenalty: frequencyPenalty !== "" ? parseFloat(frequencyPenalty) : undefined,
+    };
+
+    if (editingAnalyzeProviderId) {
+      providers = providers.map((p) =>
+        p.id === editingAnalyzeProviderId ? { ...p, ...providerData } : p
+      );
+    } else {
+      const newProvider = {
+        id: generateId(),
+        ...providerData,
+        isCurrent: providers.length === 0,
+      };
+      providers.push(newProvider);
+      if (newProvider.isCurrent) currentAnalyzeProviderId = newProvider.id;
+    }
+
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: { ...response, analyzeProviders: providers },
+    });
+
+    hideAnalyzeProviderForm();
+    renderAnalyzeProvidersList(providers);
+    showStatus("保存成功", "success");
+  } catch (error) {
+    showStatus("保存失败: " + error.message, "error");
+  }
+}
+
+async function editAnalyzeProvider(id) {
+  const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+  const provider = (response.analyzeProviders || []).find((p) => p.id === id);
+  if (provider) showAnalyzeProviderForm(provider);
+}
+
+async function deleteAnalyzeProvider(id) {
+  if (!confirm("确定要删除这个分析服务商吗？")) return;
+
+  const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+  let providers = (response.analyzeProviders || []).filter((p) => p.id !== id);
+
+  if (currentAnalyzeProviderId === id) {
+    if (providers.length > 0) {
+      providers[0].isCurrent = true;
+      currentAnalyzeProviderId = providers[0].id;
+    } else {
+      currentAnalyzeProviderId = null;
+    }
+  }
+
+  await chrome.runtime.sendMessage({
+    action: "saveSettings",
+    settings: { ...response, analyzeProviders: providers },
+  });
+
+  renderAnalyzeProvidersList(providers);
+  showStatus("分析服务商已删除", "success");
+}
+
+async function useAnalyzeProvider(id) {
+  const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+  let providers = response.analyzeProviders || [];
+  const provider = providers.find((p) => p.id === id);
+  if (!provider) return;
+
+  currentAnalyzeProviderId = id;
+  providers = providers.map((p) => ({ ...p, isCurrent: p.id === id }));
+
+  await chrome.runtime.sendMessage({
+    action: "saveSettings",
+    settings: { ...response, analyzeProviders: providers },
+  });
+
+  renderAnalyzeProvidersList(providers);
+  showStatus("已选择 " + provider.name, "success");
+}
+
+/**
+ * 获取分析服务商模型列表
+ */
+async function fetchAnalyzeModels() {
+  let url = document.getElementById("analyzeProviderUrl").value.trim();
+  const apiKey = document.getElementById("analyzeProviderApiKey").value.trim();
+
+  if (!url || !apiKey) {
+    showStatus("请先填写 API 地址和 API Key", "error");
+    return;
+  }
+
+  // 自动补全路径
+  if (!url.endsWith("/v1/chat/completions")) {
+    url = url.replace(/\/$/, "") + "/v1/chat/completions";
+  }
+
+  const btn = document.getElementById("fetchAnalyzeModelsBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳";
+
+  try {
+    const { fetchModels } = await import(chrome.runtime.getURL("lib/analyze.js"));
+    const models = await fetchModels(url, apiKey);
+
+    const input = document.getElementById("analyzeProviderModel");
+
+    // 创建或更新 datalist
+    let datalist = document.getElementById("analyzeModelList");
+    if (!datalist) {
+      datalist = document.createElement("datalist");
+      datalist.id = "analyzeModelList";
+      document.body.appendChild(datalist);
+    }
+    input.setAttribute("list", "analyzeModelList");
+
+    datalist.innerHTML = models.map(m =>
+      `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)}${m.supportsVision ? " (支持视觉)" : ""}</option>`
+    ).join("");
+
+    showStatus(`已获取 ${models.length} 个模型`, "success");
+  } catch (error) {
+    showStatus("获取失败: " + error.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔄 获取";
+  }
+}
+
+/**
+ * 保存系统提示词
+ */
+async function saveAnalyzeSystemPrompt() {
+  const systemPrompt = document.getElementById("analyzeSystemPrompt").value.trim();
+
+  try {
+    const response = await chrome.runtime.sendMessage({ action: "getSettings" });
+    await chrome.runtime.sendMessage({
+      action: "saveSettings",
+      settings: { ...response, analyzeSystemPrompt: systemPrompt },
+    });
+    showStatus("系统提示词已保存", "success");
+  } catch (error) {
+    showStatus("保存失败: " + error.message, "error");
+  }
+}
+
+/**
+ * 恢复默认系统提示词
+ */
+function resetAnalyzeSystemPrompt() {
+  if (!confirm("确定要恢复默认的系统提示词吗？当前内容将被覆盖。")) return;
+
+  // 动态导入获取默认提示词
+  import(chrome.runtime.getURL("lib/analyze.js")).then(({ DEFAULT_ANALYZE_SYSTEM_PROMPT }) => {
+    document.getElementById("analyzeSystemPrompt").value = DEFAULT_ANALYZE_SYSTEM_PROMPT;
+    showStatus("已恢复默认提示词", "success");
+  }).catch((error) => {
+    showStatus("恢复失败: " + error.message, "error");
+  });
 }
