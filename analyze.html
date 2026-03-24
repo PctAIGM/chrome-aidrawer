@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI画图助手 - 图片分析</title>
+    <link rel="stylesheet" href="styles/common.css" />
+    <link rel="stylesheet" href="styles/analyze.css" />
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 图片分析</h1>
+            <p>上传图片，AI 帮你生成提示词</p>
+        </header>
+
+        <!-- 服务商和模型选择 -->
+        <div class="card">
+            <div class="form-group">
+                <label>分析服务商</label>
+                <select id="providerSelect">
+                    <option value="">请先配置服务商</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>模型</label>
+                <div class="model-select-wrapper">
+                    <select id="modelSelect">
+                        <option value="">加载中...</option>
+                    </select>
+                    <button class="btn secondary small" id="fetchModelsBtn" type="button">🔄 获取</button>
+                </div>
+            </div>
+
+            <!-- 图片来源 -->
+            <div class="form-group">
+                <label>选择图片</label>
+                <div class="image-source">
+                    <div class="flex gap-8 flex-wrap">
+                        <button class="btn secondary small flex-1" id="selectImageBtn">📁 选择文件</button>
+                        <button class="btn secondary small flex-1" id="urlBtn">🔗 链接</button>
+                    </div>
+                    <input type="file" id="imageFileInput" accept="image/*" style="display:none">
+                    <div id="imagePreview" class="image-preview hidden">
+                        <img id="previewImg" src="" alt="预览">
+                        <div class="preview-actions flex gap-8 mt-8" style="justify-content: center;">
+                            <button class="btn danger small" id="removeImageBtn" style="padding: 0 12px;">× 移除</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 高级参数 (可折叠) -->
+            <div class="advanced-params-section" id="advancedParamsSection">
+                <div class="advanced-params-header" id="advancedParamsToggle">
+                    <span class="toggle-icon">▶</span>
+                    <span>高级参数</span>
+                </div>
+                <div class="advanced-params-content hidden" id="advancedParamsContent">
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Temperature (温度)</label>
+                        <input type="number" id="analyzeTemperature" placeholder="0.7" step="0.1" min="0" max="2">
+                        <span class="hint">0-2之间，值越大回复越随机（默认 0.7）</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Max Tokens (最大长度)</label>
+                        <input type="number" id="analyzeMaxTokens" placeholder="2000" min="1">
+                        <span class="hint">单次回复生成的最大 Tokens 数量（默认 2000）</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Top P</label>
+                        <input type="number" id="analyzeTopP" placeholder="留空使用默认值" step="0.1" min="0" max="1">
+                        <span class="hint">核采样参数，0-1之间</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Presence Penalty (存在惩罚)</label>
+                        <input type="number" id="analyzePresencePenalty" placeholder="留空配置" step="0.1" min="-2" max="2">
+                        <span class="hint">-2.0 到 2.0 之间，正值鼓励模型提及新话题</span>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>Frequency Penalty (频率惩罚)</label>
+                        <input type="number" id="analyzeFrequencyPenalty" placeholder="留空配置" step="0.1" min="-2" max="2">
+                        <span class="hint">-2.0 到 2.0 之间，正值惩罚重复用词</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="form-actions" style="justify-content: center;">
+                <button class="btn primary" id="analyzeBtn" style="flex: 2;" disabled>
+                    <span class="btn-text">🔍 开始分析</span>
+                </button>
+                <button class="btn secondary hidden" id="reanalyzeBtn" style="flex: 1;">
+                    🔄 重新分析
+                </button>
+            </div>
+        </div>
+
+        <!-- 进度 -->
+        <div class="card hidden" id="progressSection">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p class="progress-text" id="progressText">准备中...</p>
+        </div>
+
+        <!-- 错误 -->
+        <div class="card hidden" id="errorSection">
+            <div style="text-align: center; padding: 20px;">
+                <p style="font-size: 48px; margin-bottom: 12px;">❌</p>
+                <p id="errorText" style="color: var(--danger-color); font-weight: 500;"></p>
+            </div>
+            <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+                <button class="btn secondary hidden" id="debugBtn">🐞 查看调试信息</button>
+                <button class="btn primary" id="retryBtn">重试</button>
+            </div>
+        </div>
+
+        <!-- 结果 -->
+        <div class="card hidden" id="resultSection">
+            <div class="result-header">
+                <h3>📋 分析结果</h3>
+                <div class="result-actions">
+                    <button class="btn secondary small" id="copyPromptBtn">📋 复制</button>
+                    <button class="btn primary small" id="usePromptBtn">🎨 去画图</button>
+                </div>
+            </div>
+            <div class="result-content">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>生成的提示词</label>
+                    <div class="result-prompt-display" id="resultPrompt"></div>
+                </div>
+            </div>
+            <div style="margin-top: 16px; text-align: center;">
+                <button class="btn secondary small hidden" id="resultDebugBtn">🐞 查看调试信息</button>
+            </div>
+        </div>
+
+        <!-- 配置提示 -->
+        <div class="config-hint hidden" id="configHint">
+            <p>⚠️ 请先前往设置页面配置图片分析服务商</p>
+            <button class="btn primary" id="goSettingsBtn">去设置</button>
+        </div>
+
+        <!-- 返回链接 -->
+        <div style="text-align: center; margin-top: 24px;">
+            <a href="options.html" style="color: var(--accent-color); text-decoration: none;">← 返回设置</a>
+        </div>
+    </div>
+
+    <!-- 调试模态框 -->
+    <div id="debugModal" class="modal" style="display: none;">
+        <div class="debug-modal-content">
+            <div class="debug-modal-header">
+                <span class="debug-modal-title">🐞 API 调试信息</span>
+                <button class="debug-close-btn" id="debugCloseBtn">&times;</button>
+            </div>
+            <div class="debug-modal-body" id="debugModalBody">
+                <!-- 动态填充 -->
+            </div>
+            <div class="debug-modal-footer">
+                <button class="btn secondary" id="copyDebugBtn">📋 复制调试信息</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="analyze.js"></script>
+</body>
+
+</html>

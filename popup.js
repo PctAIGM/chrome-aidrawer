@@ -26,10 +26,18 @@ async function loadSettings() {
   try {
     // 解析 URL 参数
     const urlParams = new URLSearchParams(window.location.search);
-    const prefillPrompt = urlParams.get("prompt");
+    let prefillPrompt = urlParams.get("prompt");
     const prefillNegativePrompt = urlParams.get("negativePrompt");
     const prefillProviderId = urlParams.get("providerId");
     const prefillOperationType = urlParams.get("operationType");
+
+    if (!prefillPrompt) {
+      const { pendingPrompt = "" } = await chrome.storage.local.get("pendingPrompt");
+      if (pendingPrompt) {
+        prefillPrompt = pendingPrompt;
+        await chrome.storage.local.remove("pendingPrompt");
+      }
+    }
     
     // 如果有预填充参数，填入输入框
     if (prefillPrompt) {
