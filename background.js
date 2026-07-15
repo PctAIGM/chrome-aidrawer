@@ -519,6 +519,7 @@ async function handleGenerateImage(
   operationType = "generate",
   advancedParamsOverrides = null,
   requestId = null,
+  images = null,
 ) {
   const opText = operationType === "edit" ? "改图" : "生成图片";
 
@@ -624,6 +625,8 @@ async function handleGenerateImage(
       // multipart模式参数
       useMultipart: provider.useMultipart,
       imageFieldName: provider.imageFieldName,
+      // 多图数组
+      images: images,
     };
 
     const { requestBody, responseData, result } = await generateWithCustomAPI(
@@ -788,6 +791,19 @@ async function handleGenerateImage(
   cleanupOldRequests();
 }
 
+/**
+ * 判断参数是否为「图片数组」字段。
+ * 规则：type === 'list' 且 fieldType 为图片语义（image / imageUrl / image_url）。
+ * 取代旧的 fieldType === 'images'，复用已存在的 list 类型 + 单图语义。
+ * 注意：与 Android App 保持一致的判断逻辑，保证配置互通。
+ */
+function isImageArrayParam(p) {
+  return !!p
+    && typeof p === "object"
+    && p.type === "list"
+    && (p.fieldType === "image" || p.fieldType === "imageUrl" || p.fieldType === "image_url");
+}
+
 async function generateWithCustomAPI(prompt, config) {
   const {
     endpoint,
@@ -806,11 +822,22 @@ async function generateWithCustomAPI(prompt, config) {
     useMultipart, // 新增：是否使用multipart/form-data格式
     imageFieldName, // 新增：图片字段名
     negativePrompt, // 新增：反向提示词
+    images, // 新增：多图数组（URI/base64），用于 type==='list' + fieldType 为图片 的参数
   } = config;
 
   let requestBody = {};
   let isMultipartRequest = false;
   let formData = null;
+
+  // 统一多图列表：优先 images，回退到单图 imageUrl（保持向下兼容）
+  const allImages = Array.isArray(images) && images.length > 0
+    ? images.filter((u) => !!u)
+    : (imageUrl ? [imageUrl] : []);
+
+  // 检查是否存在多图字段（type === 'list' 且 fieldType 为图片）
+  const hasImagesField = Object.values(customParams || {}).some(
+    (v) => isImageArrayParam(v),
+  );
 
   // 检查是否需要使用multipart格式（改图且配置了useMultipart）
   if (operationType === "edit" && imageUrl && useMultipart) {
@@ -855,10 +882,13 @@ async function generateWithCustomAPI(prompt, config) {
           if (value.fieldType === "prompt") {
             // 提示词已经添加过了，跳过
             continue;
-          } else if (value.fieldType === "imageUrl") {
+          } else if (value.fieldType === "imageUrl" || value.fieldType === "image" || value.fieldType === "image_url") {
             // 图片已经添加过了，跳过
             continue;
-          } else if (value.fieldType === "negativePrompt") {
+          } else if (isImageArrayParam(value)) {
+            // 多图字段：按同一 key 逐张追加文件 part（跳过已由上面单图追加的情况）
+            continue;
+          } else if (value.fieldType === "negativePrompt" || value.fieldType === "negative_prompt") {
             // 反向提示词字段
             finalValue = negativePrompt !== undefined && negativePrompt !== "" ? negativePrompt : value.value;
           } else {
@@ -875,6 +905,30 @@ async function generateWithCustomAPI(prompt, config) {
 
         if (finalValue !== undefined && finalValue !== null && finalValue !== '') {
           formData.append(key, String(finalValue));
+        }
+      }
+
+      // 多图字段：按同一 key 逐张追加文件 part（数组顺序即图片顺序）
+      if (hasImagesField && allImages.length > 0) {
+        for (const param of Object.values(customParams || {})) {
+          if (isImageArrayParam(param)) {
+            const imgKey = Object.keys(customParams || {}).find(
+              (k) => customParams[k] === param,
+            );
+            if (!imgKey) continue;
+            for (const img of allImages) {
+              try {
+                const r = await fetch(img);
+                const b = await r.blob();
+                let ext = "png";
+                if (b.type && (b.type.includes("jpeg") || b.type.includes("jpg"))) ext = "jpg";
+                else if (b.type && b.type.includes("webp")) ext = "webp";
+                formData.append(imgKey, b, `image_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`);
+              } catch (e) {
+                console.warn("多图追加失败，跳过:", img?.substring(0, 50), e.message);
+              }
+            }
+          }
         }
       }
 
@@ -919,9 +973,12 @@ async function generateWithCustomAPI(prompt, config) {
         if (value.fieldType === "prompt") {
           // 提示词字段
           finalValue = prompt;
-        } else if (value.fieldType === "imageUrl" && imageUrl) {
+        } else if ((value.fieldType === "imageUrl" || value.fieldType === "image" || value.fieldType === "image_url") && imageUrl) {
           // 图片URL字段（仅改图时）
           finalValue = imageUrl;
+        } else if (isImageArrayParam(value)) {
+          // 多图数组字段：此处跳过，由下方统一注入数组
+          continue;
         } else if (value.fieldType === "imageBase64" && imageUrl) {
           // 图片Base64字段（仅改图时，将URL转换为base64）
           if (imageUrl.startsWith('data:')) {
@@ -944,7 +1001,7 @@ async function generateWithCustomAPI(prompt, config) {
               throw err;
             }
           }
-        } else if (value.fieldType === "negativePrompt") {
+        } else if (value.fieldType === "negativePrompt" || value.fieldType === "negative_prompt") {
           // 反向提示词字段
           finalValue = negativePrompt !== undefined && negativePrompt !== "" ? negativePrompt : value.value;
         } else {
@@ -973,6 +1030,15 @@ async function generateWithCustomAPI(prompt, config) {
     );
     if (!hasPromptField) {
       requestBody.prompt = prompt;
+    }
+
+    // 多图数组字段：注入 URI 数组（数组顺序即图片顺序）
+    if (hasImagesField && allImages.length > 0) {
+      for (const [key, value] of Object.entries(customParams || {})) {
+        if (isImageArrayParam(value)) {
+          setValueByPath(requestBody, key, allImages);
+        }
+      }
     }
 
     // 默认添加 n:1 （如果还没有）
@@ -2044,6 +2110,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.log("使用本地文件数据进行改图，文件名:", message.fileName);
         }
 
+        // 多图模式：传入图片数组（base64/dataUrl 或 URL）
+        const images = Array.isArray(message.imagesData) && message.imagesData.length > 0
+          ? message.imagesData
+          : null;
+
         await handleGenerateImage(
           message.prompt,
           message.negativePrompt,
@@ -2053,6 +2124,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           "edit",
           message.advancedParams,
           message.requestId,
+          images,
         );
         sendResponse({ success: true });
       } catch (error) {

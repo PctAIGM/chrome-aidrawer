@@ -21,6 +21,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 let allowNSFW = false; // NSFW设置
 let currentImageUrl = null;
 let uploadedImageUrl = null; // 存储上传后的图片URL
+// 多图模式：选中的附加图片（主图之外的第 2、3... 张），每项 { name, dataUrl }
+let selectedMultiImages = [];
 
 async function loadSettings() {
   try {
@@ -145,7 +147,7 @@ async function checkNegativePromptAvailability() {
 
     if (currentProvider && currentProvider.customParams) {
       for (const [key, value] of Object.entries(currentProvider.customParams)) {
-        if (value && typeof value === "object" && value.fieldType === "negativePrompt") {
+        if (value && typeof value === "object" && (value.fieldType === "negativePrompt" || value.fieldType === "negative_prompt")) {
           hasNegativePrompt = true;
           defaultValue = value.value || "";
           break;
@@ -189,7 +191,7 @@ async function loadAdvancedParams() {
     for (const [key, value] of Object.entries(currentProvider.customParams)) {
       // 检查是否是特殊字段类型
       if (value && typeof value === "object" && value.fieldType) {
-        if (["prompt", "imageUrl", "imageBase64", "negativePrompt"].includes(value.fieldType)) {
+        if (["prompt", "imageUrl", "imageBase64", "negativePrompt", "images"].includes(value.fieldType)) {
           continue;
         }
       }
@@ -347,15 +349,35 @@ async function checkUploadServiceAvailability() {
     const useMultipart = currentProvider?.useMultipart;
     
     // 检查是否配置了imageBase64字段类型
-    const hasImageBase64Field = currentProvider?.customParams && 
+    const hasImageBase64Field = currentProvider?.customParams &&
       Object.values(currentProvider.customParams).some(
         v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
+      );
+
+    // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
+    const hasImagesField = currentProvider?.customParams &&
+      Object.values(currentProvider.customParams).some(
+        v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
       );
 
     const uploadTab = document.getElementById("uploadTab");
     const historyTab = document.getElementById("historyTab");
     const uploadImageBtn = document.getElementById("uploadImageBtn");
     const uploadHistoryImageBtn = document.getElementById("uploadHistoryImageBtn");
+
+    // 多图模式：显示"添加图片URL"按钮
+    const addExtraUrlBtn = document.getElementById("addExtraUrlBtn");
+    if (addExtraUrlBtn) {
+      addExtraUrlBtn.style.display = hasImagesField ? "block" : "none";
+      // 离开多图模式时清空附加URL
+      if (!hasImagesField) clearExtraUrlList();
+    }
+
+    // 多图模式：主图缩略图显示序号①，与附加图②③对齐
+    const mainImageBadge = document.getElementById("mainImageBadge");
+    if (mainImageBadge) {
+      mainImageBadge.style.display = hasImagesField ? "block" : "none";
+    }
 
     // 历史记录选项卡始终显示（在改图模式下）
     historyTab.style.display = "block";
@@ -434,6 +456,9 @@ function setupEventListeners() {
   document.getElementById("uploadImageBtn").addEventListener("click", uploadImage);
   document.getElementById("removeImageBtn").addEventListener("click", removeSelectedImage);
 
+  // 多图URL模式：添加附加图片URL
+  document.getElementById("addExtraUrlBtn").addEventListener("click", () => addExtraUrlRow());
+
   // 提示词切换按钮
   document.getElementById("togglePromptBtn").addEventListener("click", togglePrompt);
 
@@ -469,10 +494,17 @@ async function generateImage() {
     const useMultipart = currentProvider?.useMultipart;
     
     // 检查是否配置了imageBase64字段类型
-    const hasImageBase64Field = currentProvider?.customParams && 
+    const hasImageBase64Field = currentProvider?.customParams &&
       Object.values(currentProvider.customParams).some(
         v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
       );
+
+    // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
+    const hasImagesField = currentProvider?.customParams &&
+      Object.values(currentProvider.customParams).some(
+        v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
+      );
+    const isMultiImageMode = !!hasImagesField;
 
     // 检查当前活动的选项卡
     const urlTab = document.getElementById("urlTab");
@@ -584,6 +616,45 @@ async function generateImage() {
     // 收集高级参数
     const advancedParams = collectAdvancedParams();
 
+    // 多图模式：汇总所有图片（主图 + 附加图）为 URI/dataUrl 数组
+    let imagesData = null;
+    // 重新读取当前 provider 是否多图、当前 tab 是否 URL 模式（上方 edit 块内的变量作用域不通）
+    const _urlTabActive = document.getElementById("urlTab")?.classList.contains("active");
+    let _multiProvider = false;
+    {
+      const _resp = await chrome.runtime.sendMessage({ action: "getSettings" });
+      const _prov = (_resp.providers || []).find(p => p.id === providerId);
+      _multiProvider = !!(_prov?.customParams &&
+        Object.values(_prov.customParams).some(
+          v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
+        ));
+    }
+    if (serviceType === "edit" && _multiProvider) {
+      imagesData = [];
+      // 主图
+      if (imageFile) {
+        if (imageFile.dataUrl) {
+          imagesData.push(imageFile.dataUrl);
+        } else {
+          imagesData.push(await fileToBase64(imageFile));
+        }
+      } else if (imageUrl) {
+        imagesData.push(imageUrl);
+      }
+      // 附加图（优先使用已上传的远程 URL，避免发送大段 base64）
+      for (const img of selectedMultiImages) {
+        if (img.uploadedUrl) imagesData.push(img.uploadedUrl);
+        else if (img.dataUrl) imagesData.push(img.dataUrl);
+      }
+      // URL 模式下的附加URL
+      if (_urlTabActive) {
+        for (const u of getExtraUrls()) {
+          imagesData.push(u);
+        }
+      }
+      if (imagesData.length === 0) imagesData = null;
+    }
+
     // 发送生成/改图消息
     if (serviceType === "edit") {
       if (imageFile) {
@@ -605,6 +676,7 @@ async function generateImage() {
           providerId: providerId,
           useLocalFile: true,
           advancedParams: advancedParams,
+          imagesData: imagesData,
         });
       } else {
         // 对于非multipart接口，发送URL
@@ -615,6 +687,7 @@ async function generateImage() {
           imageUrl: imageUrl,
           providerId: providerId,
           advancedParams: advancedParams,
+          imagesData: imagesData,
         });
       }
     } else {
@@ -752,17 +825,20 @@ function switchToUrlTab() {
   console.log("切换到URL模式");
 }
 
-// 文件选择处理
+// 文件选择处理（支持多选：第一张为主图，其余追加为附加图）
 function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
 
-  if (!file.type.startsWith('image/')) {
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+  if (imageFiles.length === 0) {
     showUploadStatus('请选择图片文件', 'error');
     return;
   }
 
-  // 显示预览
+  const file = imageFiles[0];
+
+  // 显示主图预览
   const reader = new FileReader();
   reader.onload = (e) => {
     const previewImg = document.getElementById("previewImg");
@@ -789,9 +865,170 @@ function handleFileSelect(event) {
     }
   };
   reader.readAsDataURL(file);
+
+  // 多选时，第 2 张及以后追加为附加图
+  const extraFiles = imageFiles.slice(1);
+  if (extraFiles.length > 0) {
+    let loaded = 0;
+    extraFiles.forEach((f, idx) => {
+      const r = new FileReader();
+      r.onload = (e) => {
+        selectedMultiImages.push({ name: f.name, dataUrl: e.target.result });
+        loaded++;
+        if (loaded === extraFiles.length) renderMultiImagePreview();
+      };
+      r.readAsDataURL(f);
+    });
+  }
 }
 
-// 上传图片到图床
+// 渲染多图附加预览网格
+function renderMultiImagePreview() {
+  const container = document.getElementById("multiImagePreview");
+  if (!container) return;
+  container.innerHTML = "";
+  if (selectedMultiImages.length === 0) {
+    container.style.display = "none";
+    return;
+  }
+  // 每张附加图一块：缩略图（全宽）+ 下方全宽 URL 行，纵向堆叠
+  container.style.display = "flex";
+  selectedMultiImages.forEach((img, index) => {
+    const item = document.createElement("div");
+    item.className = "multi-image-item";
+
+    // 缩略图区
+    const thumb = document.createElement("div");
+    thumb.className = "multi-image-thumb";
+    const im = document.createElement("img");
+    im.src = img.dataUrl;
+    im.alt = "附加图";
+    const badge = document.createElement("span");
+    badge.className = "multi-image-badge";
+    badge.textContent = String(index + 2);
+    // 已上传到图床时，给序号徽标加个"已上传"标记
+    if (img.uploadedUrl) {
+      badge.classList.add("uploaded");
+      badge.title = "已上传到图床";
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "multi-image-remove";
+    btn.innerHTML = "&times;";
+    btn.title = "移除";
+    btn.addEventListener("click", () => {
+      selectedMultiImages.splice(index, 1);
+      renderMultiImagePreview();
+    });
+    thumb.appendChild(im);
+    thumb.appendChild(badge);
+    thumb.appendChild(btn);
+    item.appendChild(thumb);
+
+    // 已上传时，缩略图下方显示全宽 URL（带复制按钮）
+    if (img.uploadedUrl) {
+      const urlRow = document.createElement("div");
+      urlRow.className = "multi-url-row";
+      const urlInput = document.createElement("input");
+      urlInput.type = "text";
+      urlInput.value = img.uploadedUrl;
+      urlInput.readOnly = true;
+      urlInput.title = img.uploadedUrl;
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "multi-url-copy";
+      copyBtn.textContent = "复制";
+      copyBtn.title = "复制此图链接";
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(img.uploadedUrl);
+          const orig = copyBtn.textContent;
+          copyBtn.textContent = "✅";
+          setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+        } catch (e) {
+          copyBtn.textContent = "❌";
+          setTimeout(() => { copyBtn.textContent = "复制"; }, 1500);
+        }
+      });
+      urlRow.appendChild(urlInput);
+      urlRow.appendChild(copyBtn);
+      item.appendChild(urlRow);
+    }
+
+    container.appendChild(item);
+  });
+}
+
+// ==================== 多图 URL 模式 ====================
+let extraUrlSeq = 0;
+
+// 添加一个附加图片URL输入框
+function addExtraUrlRow(url = "") {
+  const list = document.getElementById("extraUrlList");
+  if (!list) return;
+  list.style.display = "block";
+  const seq = ++extraUrlSeq;
+  const row = document.createElement("div");
+  row.className = "extra-url-row";
+  row.dataset.seq = String(seq);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "extra-url-input";
+  input.placeholder = "输入附加图片URL...";
+  input.value = url;
+  const badge = document.createElement("span");
+  badge.className = "extra-url-badge";
+  badge.textContent = String(list.children.length + 2);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "extra-url-remove";
+  btn.innerHTML = "&times;";
+  btn.title = "移除";
+  btn.addEventListener("click", () => {
+    row.remove();
+    refreshExtraUrlBadges();
+    if (list.children.length === 0) {
+      list.style.display = "none";
+    }
+  });
+  row.appendChild(badge);
+  row.appendChild(input);
+  row.appendChild(btn);
+  list.appendChild(row);
+}
+
+// 重新编号附加URL的序号
+function refreshExtraUrlBadges() {
+  const list = document.getElementById("extraUrlList");
+  if (!list) return;
+  list.querySelectorAll(".extra-url-row").forEach((row, idx) => {
+    const badge = row.querySelector(".extra-url-badge");
+    if (badge) badge.textContent = String(idx + 2);
+  });
+}
+
+// 清空所有附加URL
+function clearExtraUrlList() {
+  const list = document.getElementById("extraUrlList");
+  if (list) {
+    list.innerHTML = "";
+    list.style.display = "none";
+  }
+}
+
+// 获取所有附加URL（去重、去空）
+function getExtraUrls() {
+  const list = document.getElementById("extraUrlList");
+  if (!list) return [];
+  const urls = [];
+  list.querySelectorAll(".extra-url-input").forEach((input) => {
+    const v = input.value.trim();
+    if (v) urls.push(v);
+  });
+  return urls;
+}
+
+// 上传图片到图床（支持多图批量上传）
 async function uploadImage() {
   const fileInput = document.getElementById("imageFileInput");
   const file = fileInput.files[0];
@@ -801,44 +1038,58 @@ async function uploadImage() {
     return;
   }
 
+  const hasExtra = selectedMultiImages.length > 0;
   const uploadBtn = document.getElementById("uploadImageBtn");
   const originalText = uploadBtn.textContent;
 
   uploadBtn.disabled = true;
-  uploadBtn.textContent = '上传中...';
+  uploadBtn.textContent = hasExtra ? `上传中... (1/${selectedMultiImages.length + 1})` : '上传中...';
   hideUploadStatus();
 
-  try {
-    // 将文件转换为base64
-    const base64 = await fileToBase64(file);
-
+  // 单个图片上传辅助函数
+  const uploadOne = async (imageData, fileName) => {
     const result = await chrome.runtime.sendMessage({
       action: 'uploadImage',
-      imageData: base64,
-      fileName: file.name
+      imageData: imageData,
+      fileName: fileName
     });
-
-    if (result.success) {
-      uploadedImageUrl = result.imageUrl;
-      console.log("图片上传成功，URL:", uploadedImageUrl);
-
-      // 更新按钮状态，显示已上传
-      const uploadBtn = document.getElementById("uploadImageBtn");
-      uploadBtn.textContent = '✅ 已上传';
-      uploadBtn.style.background = '#48bb78';
-      uploadBtn.style.color = 'white';
-
-      // 显示图片URL和复制按钮
-      showUploadStatus('图片上传成功！可以开始改图了', 'success');
-      showImageUrl(uploadedImageUrl);
-    } else {
-      const errorMsg = formatErrorMessage(result.error || '上传失败');
-      throw new Error(errorMsg);
+    if (!result.success) {
+      throw new Error(formatErrorMessage(result.error || '上传失败'));
     }
+    return result.imageUrl;
+  };
+
+  try {
+    // 上传主图
+    const base64 = await fileToBase64(file);
+    uploadedImageUrl = await uploadOne(base64, file.name);
+    console.log("主图上传成功，URL:", uploadedImageUrl);
+
+    // 上传附加图（如果有）
+    if (hasExtra) {
+      for (let i = 0; i < selectedMultiImages.length; i++) {
+        uploadBtn.textContent = `上传中... (${i + 2}/${selectedMultiImages.length + 1})`;
+        const img = selectedMultiImages[i];
+        const url = await uploadOne(img.dataUrl, img.name);
+        selectedMultiImages[i].uploadedUrl = url;
+        console.log(`附加图 ${i + 2} 上传成功，URL:`, url);
+      }
+      renderMultiImagePreview();
+    }
+
+    // 更新按钮状态，显示已上传
+    uploadBtn.textContent = '✅ 已上传';
+    uploadBtn.style.background = '#48bb78';
+    uploadBtn.style.color = 'white';
+
+    // 显示图片URL和复制按钮
+    const total = hasExtra ? selectedMultiImages.length + 1 : 1;
+    showUploadStatus(hasExtra ? `${total} 张图片上传成功！可以开始改图了` : '图片上传成功！可以开始改图了', 'success');
+    showImageUrl(uploadedImageUrl);
   } catch (error) {
     const errorMsg = formatErrorMessage(error);
-    console.error('图片上传失败:', error);
-    console.error('格式化后的错误信息:', errorMsg);
+    console.error("图片上传失败:", error);
+    console.error("格式化后的错误信息:", errorMsg);
     showUploadStatus(errorMsg, 'error');
     uploadedImageUrl = null;
   } finally {
@@ -883,10 +1134,16 @@ function showImageUrl(imageUrl) {
     </div>
   `;
 
-  // 插入到上传状态下方
-  const uploadStatus = document.getElementById("uploadStatus");
-  if (uploadStatus && uploadStatus.parentNode) {
-    uploadStatus.parentNode.insertBefore(urlDiv, uploadStatus.nextSibling);
+  // 插入到主图预览下方（与附加图 URL 行“缩略图在上、URL 在下”的布局保持一致）
+  const imagePreview = document.getElementById("imagePreview");
+  if (imagePreview && imagePreview.parentNode) {
+    imagePreview.parentNode.insertBefore(urlDiv, imagePreview.nextSibling);
+  } else {
+    // 兜底：主图预览不存在时，插入到上传状态下方
+    const uploadStatus = document.getElementById("uploadStatus");
+    if (uploadStatus && uploadStatus.parentNode) {
+      uploadStatus.parentNode.insertBefore(urlDiv, uploadStatus.nextSibling);
+    }
   }
 
   // 绑定复制按钮事件
@@ -939,6 +1196,8 @@ function removeSelectedImage() {
   uploadImageBtn.style.display = "none";
   fileInput.value = "";
   uploadedImageUrl = null;
+  selectedMultiImages = [];
+  renderMultiImagePreview();
 
   // 重置上传按钮状态
   uploadImageBtn.textContent = "📤 上传到图床";
@@ -954,6 +1213,9 @@ function removeSelectedImage() {
 // 重置图片相关状态
 function resetImageState() {
   uploadedImageUrl = null;
+  selectedMultiImages = [];
+  renderMultiImagePreview();
+  clearExtraUrlList();
   selectedHistoryImageUrl = null;
   selectedHistoryPrompt = "";
   selectedHistoryImageData = null;
