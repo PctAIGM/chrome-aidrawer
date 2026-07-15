@@ -721,8 +721,10 @@ function showProviderForm(provider = null) {
         if (v && typeof v === "object" && v.value !== undefined) {
           actualValue = v.value;
           fieldType = v.fieldType || "";
-          // 重新判断类型
-          if (actualValue === "__RANDOM__") {
+          // 优先使用持久化的 type；缺失时再从 value 结构推断（向后兼容旧配置）
+          if (typeof v.type === "string" && v.type) {
+            type = v.type;
+          } else if (actualValue === "__RANDOM__") {
             type = "random";
           } else if (Array.isArray(actualValue)) {
             type = "list";
@@ -905,15 +907,15 @@ async function saveProvider() {
           parsedValue = JSON.parse(v);
         else parsedValue = v;
 
-        // 如果有字段类型，使用新格式
+        // 如果有字段类型，使用新格式（持久化 type 以支持 type==='list' + fieldType==='image' 的多图识别）
         if (fieldType) {
-          customParams[k] = { value: parsedValue, fieldType: fieldType };
+          customParams[k] = { value: parsedValue, type: type, fieldType: fieldType };
         } else {
           customParams[k] = parsedValue;
         }
       } catch (e) {
         console.warn(`参数 ${k} 转换失败:`, e);
-        customParams[k] = fieldType ? { value: v, fieldType: fieldType } : v;
+        customParams[k] = fieldType ? { value: v, type: type, fieldType: fieldType } : v;
       }
     }
   });
@@ -2729,8 +2731,10 @@ function showTemplateForm(template = null) {
         if (v && typeof v === "object" && v.value !== undefined) {
           actualValue = v.value;
           fieldType = v.fieldType || "";
-          // 重新判断类型
-          if (actualValue === "__RANDOM__") {
+          // 优先使用持久化的 type；缺失时再从 value 结构推断（向后兼容旧配置）
+          if (typeof v.type === "string" && v.type) {
+            type = v.type;
+          } else if (actualValue === "__RANDOM__") {
             type = "random";
           } else if (Array.isArray(actualValue)) {
             type = "list";

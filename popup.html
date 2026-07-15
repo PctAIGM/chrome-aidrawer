@@ -53,19 +53,23 @@
 
           <div id="urlSection" class="image-input-section">
             <input type="text" id="imageUrlInput" placeholder="输入要编辑的图片URL...">
+            <div id="extraUrlList" class="extra-url-list" style="display: none;"></div>
+            <button type="button" id="addExtraUrlBtn" class="btn secondary extra-url-add-btn" style="display: none;">+ 添加图片URL</button>
           </div>
 
           <div id="uploadSection" class="image-input-section" style="display: none;">
             <div class="upload-area">
-              <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+              <input type="file" id="imageFileInput" accept="image/*" multiple style="display: none;">
               <button type="button" id="selectImageBtn" class="btn secondary">📁 选择图片</button>
               <button type="button" id="uploadImageBtn" class="btn secondary" style="display: none;">📤 上传到图床</button>
             </div>
             <div id="uploadStatus" class="upload-status" style="display: none;"></div>
             <div id="imagePreview" class="image-preview" style="display: none;">
+              <span id="mainImageBadge" class="multi-image-badge" style="display: none;">1</span>
               <img id="previewImg" src="" alt="预览图片">
               <button type="button" id="removeImageBtn" class="remove-btn">&times;</button>
             </div>
+            <div id="multiImagePreview" class="multi-image-preview" style="display: none;"></div>
           </div>
 
           <div id="historySection" class="image-input-section" style="display: none;">

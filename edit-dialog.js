@@ -251,7 +251,7 @@ function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBas
 
     if (currentProvider && currentProvider.customParams) {
       for (const [key, value] of Object.entries(currentProvider.customParams)) {
-        if (value && typeof value === "object" && value.fieldType === "negativePrompt") {
+        if (value && typeof value === "object" && (value.fieldType === "negativePrompt" || value.fieldType === "negative_prompt")) {
           hasNegativePrompt = true;
           defaultValue = value.value || "";
           break;
