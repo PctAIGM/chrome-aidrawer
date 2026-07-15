@@ -369,13 +369,6 @@ async function checkUploadServiceAvailability() {
       if (uploadHistoryImageBtn) {
         uploadHistoryImageBtn.style.display = "none"; // 隐藏历史记录的上传到图床按钮
       }
-      // 更新提示文字
-      const hint = document.querySelector("#uploadSection .hint");
-      if (hint) {
-        hint.textContent = useMultipart ? 
-          "multipart接口直接使用本地文件，无需上传到图床" : 
-          "imageBase64字段直接使用本地文件，无需上传到图床";
-      }
     } else if (hasActiveUploadService) {
       // 非multipart接口且无imageBase64字段：需要图床服务
       uploadTab.style.display = "block";
@@ -384,11 +377,6 @@ async function checkUploadServiceAvailability() {
       }
       if (uploadHistoryImageBtn) {
         uploadHistoryImageBtn.style.display = "block"; // 显示历史记录的上传到图床按钮
-      }
-      // 恢复原始提示文字
-      const hint = document.querySelector("#uploadSection .hint");
-      if (hint) {
-        hint.textContent = "改图服务需要提供图片";
       }
     } else {
       // 没有图床服务且不是multipart且无imageBase64字段
@@ -884,7 +872,7 @@ function showImageUrl(imageUrl) {
   urlDiv.innerHTML = `
     <div style="color: #4a5568; margin-bottom: 8px; font-weight: 500;">图片链接：</div>
     <div style="display: flex; gap: 8px; align-items: center;">
-      <input type="text" id="imageUrlInput" value="${imageUrl}" readonly style="
+      <input type="text" id="imageUrlDisplayInput" value="${imageUrl}" readonly style="
         flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;
         background: white; font-size: 12px; color: #374151;
       ">
@@ -905,7 +893,7 @@ function showImageUrl(imageUrl) {
   const copyBtn = document.getElementById("copyUrlBtn");
   if (copyBtn) {
     copyBtn.onclick = async () => {
-      const urlInput = document.getElementById("imageUrlInput");
+      const urlInput = document.getElementById("imageUrlDisplayInput");
       const originalText = copyBtn.textContent;
 
       try {

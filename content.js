@@ -54,6 +54,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatMultilineHtml(value) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
 // 在右下角显示小状态窗口
 function showMiniStatus(state, data) {
   let container = document.getElementById("ai-draw-mini-status");
@@ -126,9 +139,10 @@ function showMiniStatus(state, data) {
       existingText.textContent = statusText;
       existingText.style.color = statusColor;
     } else {
+      const safeStatusText = escapeHtml(statusText);
       container.innerHTML = `
           ${spinnerHtml}
-          <span class="status-text" style="font-size: 14px; color: ${statusColor}; font-weight: 500;">${statusText}</span>
+          <span class="status-text" style="font-size: 14px; color: ${statusColor}; font-weight: 500;">${safeStatusText}</span>
           <div id="ai-draw-mini-close" style="cursor: pointer; padding: 4px; color: #a0aec0; line-height: 1;">&times;</div>
         `;
     }
@@ -193,7 +207,7 @@ function showErrorModal(error, prompt, debugData) {
   createModal({
     title: "⚠️ 生成失败",
     content: `<div style="padding: 10px 0; color: #e53e3e; font-size: 14px; text-align: left; background: #fff5f5; border-radius: 6px; padding: 12px; margin-bottom: 16px;">
-      <strong>错误详情:</strong><br>${error}
+      <strong>错误详情:</strong><br>${formatMultilineHtml(error)}
     </div>`,
     prompt: prompt,
     buttons: buttons,
@@ -217,6 +231,7 @@ function showSharedImageUrl(imageUrl, prompt) {
     border-radius: 12px; font-size: 14px; word-break: break-all;
   `;
 
+  const safeImageUrl = escapeHtml(imageUrl);
   shareUrlDiv.innerHTML = `
     <div style="color: #2f855a; margin-bottom: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
       <span>🔗</span>
@@ -224,7 +239,7 @@ function showSharedImageUrl(imageUrl, prompt) {
     </div>
     <div style="color: #4a5568; margin-bottom: 8px; font-weight: 500;">分享链接：</div>
     <div style="display: flex; gap: 8px; align-items: center;">
-      <input type="text" value="${imageUrl}" readonly style="
+      <input type="text" value="${safeImageUrl}" readonly style="
         flex: 1; padding: 8px 12px; border: 1px solid #9ae6b4; border-radius: 6px;
         background: white; font-size: 13px; color: #374151;
       ">
@@ -300,16 +315,16 @@ function createModal({ title, content, prompt, buttons, debugData }) {
   let buttonsHtml = buttons
     .map(
       (btn) => `
-    <button id="${btn.id}" style="
+    <button id="${escapeHtml(btn.id)}" style="
       padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: all 0.2s;
       ${btn.class === "primary" ? "background: #667eea; color: white; border: none;" : "background: #f3f4f6; color: #333; border: 1px solid #ddd;"}
-    " ${btn.title ? `title="${btn.title}"` : ""}>${btn.text}</button>
+    " ${btn.title ? `title="${escapeHtml(btn.title)}"` : ""}>${escapeHtml(btn.text)}</button>
   `,
     )
     .join("");
 
   modal.innerHTML = `
-    <div style="font-weight: bold; font-size: 20px; margin-bottom: 20px; color: #1a202c; flex-shrink: 0;">${title}</div>
+    <div style="font-weight: bold; font-size: 20px; margin-bottom: 20px; color: #1a202c; flex-shrink: 0;">${escapeHtml(title)}</div>
     <div style="flex: 1; overflow-y: auto; margin-bottom: 16px; min-height: 0;">
       ${content}
       
@@ -325,7 +340,7 @@ function createModal({ title, content, prompt, buttons, debugData }) {
           background: #f8fafc; padding: 12px; border-radius: 8px; display: none;
           text-align: left; word-break: break-all;
         ">
-          "${prompt}"
+          "${escapeHtml(prompt)}"
         </div>
       </div>
     </div>
@@ -464,13 +479,14 @@ async function showResultModal(imageUrl, prompt, debugData) {
     });
   }
 
+  const safeImageUrl = escapeHtml(imageUrl);
   const imgHtml = `
     <div id="ai-draw-image-wrapper" style="
       position: relative; margin-bottom: 20px; cursor: pointer; 
       border-radius: 12px; line-height: 0; display: flex; justify-content: center;
       max-height: 60vh; overflow: hidden;
     ">
-      <img id="ai-draw-result-img" src="${imageUrl}" style="
+      <img id="ai-draw-result-img" src="${safeImageUrl}" style="
         max-width: 100%; max-height: 60vh; width: auto; height: auto;
         border-radius: 12px; border: 1px solid #edf2f7; object-fit: contain;
         transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -672,21 +688,24 @@ function showDebugModal(debugData) {
   `;
 
   const safeJson = (data) => JSON.stringify(data, null, 2) || "null";
+  const safeProviderName = escapeHtml(debugData.providerName || "未知服务商");
+  const safeRequestJson = escapeHtml(safeJson(debugData.request));
+  const safeResponseJson = escapeHtml(safeJson(debugData.response));
 
   modal.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px;">
-      <span style="font-weight: bold; font-size: 16px; color: #569cd6;">🐞 API 调试信息 (${debugData.providerName || "未知服务商"})</span>
+      <span style="font-weight: bold; font-size: 16px; color: #569cd6;">🐞 API 调试信息 (${safeProviderName})</span>
       <button id="ai-debug-close" style="background: transparent; border: 1px solid #444; color: #999; cursor: pointer; padding: 4px 12px; border-radius: 4px;">关闭</button>
     </div>
 
     <div style="margin-bottom: 16px;">
       <div style="color: #ce9178; margin-bottom: 4px;">// Request Body</div>
-      <pre style="background: #252526; padding: 12px; border-radius: 6px; overflow-x: auto;">${safeJson(debugData.request)}</pre>
+      <pre style="background: #252526; padding: 12px; border-radius: 6px; overflow-x: auto;">${safeRequestJson}</pre>
     </div>
 
     <div>
       <div style="color: #ce9178; margin-bottom: 4px;">// Response Data</div>
-      <pre style="background: #252526; padding: 12px; border-radius: 6px; overflow-x: auto;">${safeJson(debugData.response)}</pre>
+      <pre style="background: #252526; padding: 12px; border-radius: 6px; overflow-x: auto;">${safeResponseJson}</pre>
     </div>
   `;
 
@@ -763,11 +782,14 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
 
   // 根据是否有图片URL决定显示内容
   const reuploadButtonHtml = `<button id="ai-edit-reupload-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #667eea; background: #667eea; color: white; font-size: 13px; cursor: pointer;">📤 上传到图床</button>`;
+  const safeInitialImageUrl = escapeHtml(imageUrl);
+  const safeProviderName = escapeHtml(providerName);
+  const safeWarning = escapeHtml(warning);
 
   const imagePreviewHtml = imageUrl
     ? `
       <div id="ai-edit-image-preview" style="position: relative; margin-bottom: 16px;">
-        <img src="${imageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
+        <img src="${safeInitialImageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
         <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
           <input type="file" id="ai-edit-file-input" accept="image/*" style="display: none;">
           <button id="ai-edit-select-btn" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 13px; cursor: pointer;">📁 选择图片</button>
@@ -797,7 +819,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
         <span style="flex-shrink: 0;">⚠️</span>
         <div>
           <div style="font-weight: 600; margin-bottom: 4px;">兼容性提示</div>
-          <div>${warning}</div>
+          <div>${safeWarning}</div>
         </div>
       </div>`
     : '';
@@ -807,7 +829,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       ✏️ 改图
     </div>
     <div style="color: #718096; font-size: 14px; margin-bottom: 20px;">
-      使用 ${providerName} 编辑图片
+      使用 ${safeProviderName} 编辑图片
     </div>
 
     ${warningHtml}
@@ -849,6 +871,14 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
   let debugData = null;
   let messageHandler = null;
   let currentImageUrl = imageUrl; // 当前使用的图片URL
+
+  // 统一移除消息监听器的工具函数，确保所有终态（成功/失败/超时/关闭）都释放资源
+  const detachHandler = () => {
+    if (messageHandler) {
+      chrome.runtime.onMessage.removeListener(messageHandler);
+      messageHandler = null;
+    }
+  };
 
   // 聚焦输入框
   setTimeout(() => promptInput.focus(), 100);
@@ -1086,9 +1116,10 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       // 如果原来没有图片，创建预览区域并替换文件选择区域
       const imageSelectDiv = modal.querySelector('#ai-edit-image-select');
       if (imageSelectDiv) {
+        const safeNewImageUrl = escapeHtml(newImageUrl);
         imageSelectDiv.innerHTML = `
           <div style="position: relative;">
-            <img src="${newImageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
+            <img src="${safeNewImageUrl}" style="width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0;" alt="预览图片">
             <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: center;">
               <input type="file" id="ai-edit-file-input-new" accept="image/*" style="display: none;">
               <button id="ai-edit-select-btn-new" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f7fafc; color: #4a5568; font-size: 13px; cursor: pointer;">📁 选择图片</button>
@@ -1154,8 +1185,9 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
       border-radius: 6px; font-size: 12px; display: flex; align-items: center; gap: 8px;
     `;
 
+    const safeImageUrl = escapeHtml(imageUrl);
     urlDiv.innerHTML = `
-      <span style="color: #16a34a; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${imageUrl}</span>
+      <span style="color: #16a34a; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${safeImageUrl}</span>
       <button class="copy-url-btn" title="复制图片链接" style="
         padding: 4px 8px; background: transparent; color: #16a34a; border: 1px solid #86efac;
         border-radius: 4px; font-size: 16px; cursor: pointer; line-height: 1;
@@ -1236,7 +1268,15 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     submitBtn.disabled = true;
     submitBtn.textContent = "处理中...";
 
+    // 生成唯一请求ID，用于关联后台广播的 imageGenerated/imageError 消息
+    // 避免并发生成时误触发本对话框的成功/失败回调
+    const currentRequestId = `edit_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    // 移除上一次提交遗留的监听器，防止重试时监听器累积
+    detachHandler();
+
     const timeout = setTimeout(() => {
+      detachHandler();
       errorDiv.textContent = "改图请求超时，请检查网络连接或服务商配置";
       errorDiv.style.display = "block";
       submitBtn.disabled = false;
@@ -1245,13 +1285,20 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
 
     // 监听改图结果
     messageHandler = (request) => {
+      // 仅处理本次请求的回调，忽略无关消息（如并发的右键生成）
+      if (request.requestId && request.requestId !== currentRequestId) {
+        return;
+      }
+
       if (request.action === "imageGenerated") {
         clearTimeout(timeout);
+        detachHandler();
         if (request.debugData) debugData = request.debugData;
         submitBtn.textContent = "改图成功！";
         setTimeout(() => container.remove(), 500);
       } else if (request.action === "imageError") {
         clearTimeout(timeout);
+        detachHandler();
         if (request.debugData) {
           debugData = request.debugData;
           debugBtn.style.display = "inline-block";
@@ -1277,7 +1324,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
               errorMessage += "\n\n💡 建议解决方案：\n1. 在设置中配置图片上传服务\n2. 或右键保存图片到本地后重新上传";
             }
 
-            errorDiv.innerHTML = errorMessage.replace(/\n/g, '<br>');
+            errorDiv.innerHTML = formatMultilineHtml(errorMessage);
           });
         } else {
           errorDiv.textContent = errorMessage;
@@ -1297,16 +1344,15 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
         prompt: prompt,
         imageUrl: currentImageUrl,
         providerId: providerId,
+        requestId: currentRequestId,
       });
     } catch (error) {
       clearTimeout(timeout);
+      detachHandler();
       errorDiv.textContent = "发送请求失败: " + error.message;
       errorDiv.style.display = "block";
       submitBtn.disabled = false;
       submitBtn.textContent = "开始改图";
-      if (messageHandler) {
-        chrome.runtime.onMessage.removeListener(messageHandler);
-      }
     }
   };
 
@@ -1319,9 +1365,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
 
   // 取消
   cancelBtn.onclick = () => {
-    if (messageHandler) {
-      chrome.runtime.onMessage.removeListener(messageHandler);
-    }
+    detachHandler();
     container.remove();
   };
 
@@ -1335,9 +1379,7 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
   // 点击背景关闭
   container.onclick = (e) => {
     if (e.target === container) {
-      if (messageHandler) {
-        chrome.runtime.onMessage.removeListener(messageHandler);
-      }
+      detachHandler();
       container.remove();
     }
   };

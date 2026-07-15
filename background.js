@@ -518,6 +518,7 @@ async function handleGenerateImage(
   imageUrl = null,
   operationType = "generate",
   advancedParamsOverrides = null,
+  requestId = null,
 ) {
   const opText = operationType === "edit" ? "改图" : "生成图片";
 
@@ -526,12 +527,13 @@ async function handleGenerateImage(
     const { migrationStatus } = await chrome.storage.local.get("migrationStatus");
     const blockMessage = getMigrationBlockMessage(migrationStatus);
     showNotification(blockMessage, "error");
-    
+
     if (tabId) {
       chrome.tabs.sendMessage(tabId, {
         action: "imageError",
         error: blockMessage,
         prompt: prompt,
+        requestId: requestId,
       }).catch(() => {});
     }
     return;
@@ -547,10 +549,10 @@ async function handleGenerateImage(
       tabId = activeTab?.id;
     } catch (e) {
       console.log("获取活动标签页失败:", e);
-      }
+    }
   }
 
-  // 创建请求记录
+  // 创建请求记录（优先复用调用方传入的 requestId，保证消息与请求可关联）
   const requestRecord = createRequestRecord({
     prompt,
     negativePrompt,
@@ -559,6 +561,9 @@ async function handleGenerateImage(
     operationType,
     endpoint: provider?.endpoint,
   });
+  if (requestId) {
+    requestRecord.id = requestId;
+  }
   
   // 保存初始状态
   await saveRequestRecord(requestRecord);
@@ -698,6 +703,7 @@ async function handleGenerateImage(
           action: "imageGenerated",
           imageUrl: result.imageUrl,
           prompt: prompt,
+          requestId: recordId,
           debugData: {
             providerName: provider.name,
             request: requestBody,
@@ -716,6 +722,7 @@ async function handleGenerateImage(
             action: "imageGenerated",
             imageUrl: result.imageUrl,
             prompt: prompt,
+            requestId: recordId,
             debugData: {
               providerName: provider.name,
               request: requestBody,
@@ -756,6 +763,7 @@ async function handleGenerateImage(
         action: "imageError",
         error: error.message,
         prompt: prompt,
+        requestId: recordId,
         debugData: error.debugData || { providerName: provider.name },
       })
       .catch(() => { });
@@ -767,6 +775,7 @@ async function handleGenerateImage(
           action: "imageError",
           error: error.message,
           prompt: prompt,
+          requestId: recordId,
           debugData: error.debugData || { providerName: provider.name },
         },
         showInjectedErrorStatus,
@@ -2043,6 +2052,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           imageUrl,
           "edit",
           message.advancedParams,
+          message.requestId,
         );
         sendResponse({ success: true });
       } catch (error) {
