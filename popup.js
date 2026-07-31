@@ -24,6 +24,20 @@ let uploadedImageUrl = null; // 存储上传后的图片URL
 // 多图模式：选中的附加图片（主图之外的第 2、3... 张），每项 { name, dataUrl }
 let selectedMultiImages = [];
 
+// 图片 URL 字段类型兼容旧配置中的 image 和 image_url 别名。
+const IMAGE_URL_FIELD_TYPES = new Set(["image", "imageUrl", "image_url"]);
+
+function isImageFieldType(fieldType) {
+  return IMAGE_URL_FIELD_TYPES.has(fieldType);
+}
+
+function isImageArrayField(value) {
+  return value
+    && typeof value === "object"
+    && value.type === "list"
+    && isImageFieldType(value.fieldType);
+}
+
 async function loadSettings() {
   try {
     // 解析 URL 参数
@@ -191,7 +205,7 @@ async function loadAdvancedParams() {
     for (const [key, value] of Object.entries(currentProvider.customParams)) {
       // 检查是否是特殊字段类型
       if (value && typeof value === "object" && value.fieldType) {
-        if (["prompt", "imageUrl", "imageBase64", "negativePrompt", "images"].includes(value.fieldType)) {
+        if (isImageFieldType(value.fieldType) || ["prompt", "imageBase64", "negativePrompt", "images"].includes(value.fieldType)) {
           continue;
         }
       }
@@ -356,9 +370,7 @@ async function checkUploadServiceAvailability() {
 
     // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
     const hasImagesField = currentProvider?.customParams &&
-      Object.values(currentProvider.customParams).some(
-        v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
-      );
+      Object.values(currentProvider.customParams).some(isImageArrayField);
 
     const uploadTab = document.getElementById("uploadTab");
     const historyTab = document.getElementById("historyTab");
@@ -501,9 +513,7 @@ async function generateImage() {
 
     // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
     const hasImagesField = currentProvider?.customParams &&
-      Object.values(currentProvider.customParams).some(
-        v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
-      );
+      Object.values(currentProvider.customParams).some(isImageArrayField);
     const isMultiImageMode = !!hasImagesField;
 
     // 检查当前活动的选项卡
@@ -625,9 +635,7 @@ async function generateImage() {
       const _resp = await chrome.runtime.sendMessage({ action: "getSettings" });
       const _prov = (_resp.providers || []).find(p => p.id === providerId);
       _multiProvider = !!(_prov?.customParams &&
-        Object.values(_prov.customParams).some(
-          v => v && typeof v === 'object' && v.type === 'list' && (v.fieldType === 'image' || v.fieldType === 'imageUrl' || v.fieldType === 'image_url')
-        ));
+        Object.values(_prov.customParams).some(isImageArrayField));
     }
     if (serviceType === "edit" && _multiProvider) {
       imagesData = [];

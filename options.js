@@ -70,6 +70,39 @@ let currentAnalyzeProviderId = null;
 // 待导入的配置数据（用于部分导入）
 let pendingImportData = null;
 
+// 图片 URL 字段类型曾存在多个别名，界面统一使用 imageUrl，读取时兼容旧值。
+const IMAGE_URL_FIELD_TYPES = new Set(["image", "imageUrl", "image_url"]);
+
+/**
+ * 规范化服务商参数的字段类型。
+ *
+ * @param {string} fieldType - 原始字段类型
+ * @returns {string} 规范化后的字段类型
+ */
+function normalizeFieldType(fieldType) {
+  return IMAGE_URL_FIELD_TYPES.has(fieldType) ? "imageUrl" : fieldType || "";
+}
+
+/**
+ * 解析参数输入值。
+ * object/list 字段允许留空，空值分别保存为空对象/空数组，适用于运行时注入的图片参数。
+ *
+ * @param {string} rawValue - 输入框中的原始值
+ * @param {string} type - 参数类型
+ * @returns {*} 解析后的参数值
+ */
+function parseParameterValue(rawValue, type) {
+  if (type === "int") return parseInt(rawValue, 10);
+  if (type === "float") return parseFloat(rawValue);
+  if (type === "bool") return rawValue === "true";
+  if (type === "random") return "__RANDOM__";
+  if (type === "object" || type === "list") {
+    if (rawValue === "") return type === "list" ? [] : {};
+    return JSON.parse(rawValue);
+  }
+  return rawValue;
+}
+
 async function loadSettings() {
   try {
     const response = await chrome.runtime.sendMessage({
@@ -646,7 +679,7 @@ function addParameterRow(
 
   typeSelect.addEventListener("change", updateInputControl);
 
-  if (fieldTypeSelect) fieldTypeSelect.value = fieldType || "";
+  if (fieldTypeSelect) fieldTypeSelect.value = normalizeFieldType(fieldType);
 
   removeBtn.addEventListener("click", (e) => {
     e.target.closest(".param-row").remove();
@@ -893,19 +926,13 @@ async function saveProvider() {
     const valInput = row.querySelector(".param-value, .param-value-select");
     const v = valInput.value.trim();
     const fieldTypeSelect = row.querySelector(".param-field-type");
-    const fieldType = fieldTypeSelect ? fieldTypeSelect.value : "";
+    const fieldType = fieldTypeSelect
+      ? normalizeFieldType(fieldTypeSelect.value)
+      : "";
 
     if (k) {
       try {
-        let parsedValue;
-        if (type === "int") parsedValue = parseInt(v, 10);
-        else if (type === "float") parsedValue = parseFloat(v);
-        else if (type === "bool") parsedValue = v === "true";
-        else if (type === "random")
-          parsedValue = "__RANDOM__"; // 特殊标记，运行时替换
-        else if (type === "object" || type === "list")
-          parsedValue = JSON.parse(v);
-        else parsedValue = v;
+        const parsedValue = parseParameterValue(v, type);
 
         // 如果有字段类型，使用新格式（持久化 type 以支持 type==='list' + fieldType==='image' 的多图识别）
         if (fieldType) {
@@ -2827,17 +2854,13 @@ function saveTemplate() {
     const valInput = row.querySelector(".param-value, .param-value-select");
     const v = valInput.value.trim();
     const fieldTypeSelect = row.querySelector(".param-field-type");
-    const fieldType = fieldTypeSelect ? fieldTypeSelect.value : "";
+    const fieldType = fieldTypeSelect
+      ? normalizeFieldType(fieldTypeSelect.value)
+      : "";
 
     if (k) {
       try {
-        let parsedValue;
-        if (type === "int") parsedValue = parseInt(v, 10);
-        else if (type === "float") parsedValue = parseFloat(v);
-        else if (type === "bool") parsedValue = v === "true";
-        else if (type === "random") parsedValue = "__RANDOM__";
-        else if (type === "object" || type === "list") parsedValue = JSON.parse(v);
-        else parsedValue = v;
+        const parsedValue = parseParameterValue(v, type);
 
         // 如果有字段类型，使用新格式
         if (fieldType) {
@@ -2936,7 +2959,7 @@ function addTemplateParameterRow(key = "", value = "", type = "string", fieldTyp
     valueInput.value = typeof value === "object" ? JSON.stringify(value) : String(value === "__RANDOM__" ? "" : value);
   }
 
-  if (fieldTypeSelect) fieldTypeSelect.value = fieldType;
+  if (fieldTypeSelect) fieldTypeSelect.value = normalizeFieldType(fieldType);
 
   // 添加类型变化监听器
   typeSelect.addEventListener("change", () => {
@@ -3192,9 +3215,15 @@ function setupPasswordToggle() {
       if (input.type === "password") {
         input.type = "text";
         btn.textContent = "🙈";
+        btn.title = "隐藏密码";
+        btn.setAttribute("aria-label", "隐藏密码");
+        btn.setAttribute("aria-pressed", "true");
       } else {
         input.type = "password";
         btn.textContent = "👁️";
+        btn.title = "显示密码";
+        btn.setAttribute("aria-label", "显示密码");
+        btn.setAttribute("aria-pressed", "false");
       }
     });
   });

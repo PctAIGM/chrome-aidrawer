@@ -183,6 +183,7 @@
                                 <button id="addParamBtn" class="btn text-btn small">
                                     + Add Param
                                 </button>
+                                <span class="hint">参数名支持 input.prompt、input.messages[0].content[1].text 等对象/数组路径</span>
                             </div>
                         </div>
 
@@ -661,7 +662,12 @@
                             </div>
                             <div class="form-group">
                                 <label for="webdavPassword">密码</label>
-                                <input type="password" id="webdavPassword" placeholder="密码" />
+                                <div class="password-input-wrapper">
+                                    <input type="password" id="webdavPassword" placeholder="密码" />
+                                    <button type="button" class="password-toggle" title="显示/隐藏密码" aria-label="显示/隐藏密码">
+                                        👁️
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <div class="form-row">
@@ -843,9 +849,7 @@
                 <option value="prompt">提示词</option>
                 <option value="negative_prompt">反向提示词</option>
                 <option value="negativePrompt">反向提示词 (negativePrompt)</option>
-                <option value="image">图片</option>
-                <option value="imageUrl">图片 (imageUrl)</option>
-                <option value="image_url">图片 (image_url)</option>
+                <option value="imageUrl">图片 URL</option>
                 <option value="imageBase64">图片Base64</option>
             </select>
             <button class="btn-remove-param">❌</button>

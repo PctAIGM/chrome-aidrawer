@@ -1,6 +1,13 @@
 // 编辑图片对话框脚本
 import { fileToBase64 } from './lib/common.js';
 
+// 图片 URL 字段类型兼容旧配置中的 image 和 image_url 别名。
+const IMAGE_URL_FIELD_TYPES = new Set(["image", "imageUrl", "image_url"]);
+
+function isImageFieldType(fieldType) {
+  return IMAGE_URL_FIELD_TYPES.has(fieldType);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   // 获取图片URL
   const response = await chrome.runtime.sendMessage({ action: 'getContextImage' });
@@ -430,7 +437,7 @@ async function loadAdvancedParams(providerId) {
     for (const [key, value] of Object.entries(currentProvider.customParams)) {
       // 检查是否是特殊字段类型
       if (value && typeof value === "object" && value.fieldType) {
-        if (["prompt", "imageUrl", "imageBase64", "negativePrompt"].includes(value.fieldType)) {
+        if (isImageFieldType(value.fieldType) || ["prompt", "imageBase64", "negativePrompt"].includes(value.fieldType)) {
           continue;
         }
       }

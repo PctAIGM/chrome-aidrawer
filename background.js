@@ -792,16 +792,29 @@ async function handleGenerateImage(
 }
 
 /**
+ * 判断字段类型是否表示图片 URL。
+ * 旧配置可能使用 image 或 image_url，继续兼容这两个别名。
+ *
+ * @param {string} fieldType - 参数字段类型
+ * @returns {boolean} 是否为图片 URL 字段
+ */
+function isImageFieldType(fieldType) {
+  return fieldType === "image" || fieldType === "imageUrl" || fieldType === "image_url";
+}
+
+/**
  * 判断参数是否为「图片数组」字段。
- * 规则：type === 'list' 且 fieldType 为图片语义（image / imageUrl / image_url）。
- * 取代旧的 fieldType === 'images'，复用已存在的 list 类型 + 单图语义。
- * 注意：与 Android App 保持一致的判断逻辑，保证配置互通。
+ * 规则：type === 'list' 且 fieldType 为图片 URL 语义。
+ * 复用已存在的 list 类型 + 单图语义，兼容 Android App 和旧配置。
+ *
+ * @param {object} param - 参数配置
+ * @returns {boolean} 是否为图片数组字段
  */
 function isImageArrayParam(p) {
   return !!p
     && typeof p === "object"
     && p.type === "list"
-    && (p.fieldType === "image" || p.fieldType === "imageUrl" || p.fieldType === "image_url");
+    && isImageFieldType(p.fieldType);
 }
 
 async function generateWithCustomAPI(prompt, config) {
@@ -882,7 +895,7 @@ async function generateWithCustomAPI(prompt, config) {
           if (value.fieldType === "prompt") {
             // 提示词已经添加过了，跳过
             continue;
-          } else if (value.fieldType === "imageUrl" || value.fieldType === "image" || value.fieldType === "image_url") {
+          } else if (isImageFieldType(value.fieldType)) {
             // 图片已经添加过了，跳过
             continue;
           } else if (isImageArrayParam(value)) {
@@ -973,7 +986,7 @@ async function generateWithCustomAPI(prompt, config) {
         if (value.fieldType === "prompt") {
           // 提示词字段
           finalValue = prompt;
-        } else if ((value.fieldType === "imageUrl" || value.fieldType === "image" || value.fieldType === "image_url") && imageUrl) {
+        } else if (isImageFieldType(value.fieldType) && imageUrl) {
           // 图片URL字段（仅改图时）
           finalValue = imageUrl;
         } else if (isImageArrayParam(value)) {
@@ -1282,11 +1295,8 @@ function extractImageUrl(data, customPath) {
 }
 
 function getValueByPath(obj, path) {
-  if (!path) return null;
-  const parts = path
-    .replace(/\[(\w+)\]/g, ".$1")
-    .replace(/^\./, "")
-    .split(".");
+  const parts = parsePath(path);
+  if (parts.length === 0 || parts.some(isUnsafePathSegment)) return null;
   let current = obj;
   for (const part of parts) {
     if (current == null) return null;
@@ -1296,21 +1306,82 @@ function getValueByPath(obj, path) {
 }
 
 function setValueByPath(obj, path, value) {
-  if (!path) return;
-  const parts = path.split(".");
+  const parts = parsePath(path);
+  if (parts.length === 0 || parts.some(isUnsafePathSegment)) return;
+
   let current = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
+    const nextPart = parts[i + 1];
+    const shouldCreateArray = /^\d+$/.test(nextPart);
+
     if (
       !(part in current) ||
       typeof current[part] !== "object" ||
       current[part] === null
     ) {
-      current[part] = {};
+      current[part] = shouldCreateArray ? [] : {};
     }
     current = current[part];
   }
   current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * 将点号路径和方括号路径转换为统一的路径片段。
+ * 支持：input.prompt、input.messages[0].content[1].text、items["image.url"]。
+ *
+ * @param {string} path - 对象访问路径
+ * @returns {string[]} 路径片段
+ */
+function parsePath(path) {
+  if (typeof path !== "string" || path.trim() === "") return [];
+
+  const parts = [];
+  const source = path.trim();
+  let index = 0;
+
+  while (index < source.length) {
+    if (source[index] === ".") {
+      index++;
+      continue;
+    }
+
+    if (source[index] === "[") {
+      index++;
+      while (/\s/.test(source[index] || "")) index++;
+
+      let segment = "";
+      const quote = source[index];
+      if (quote === "\"" || quote === "'") {
+        index++;
+        const start = index;
+        while (index < source.length && source[index] !== quote) index++;
+        segment = source.slice(start, index);
+        if (source[index] === quote) index++;
+      } else {
+        const start = index;
+        while (index < source.length && source[index] !== "]") index++;
+        segment = source.slice(start, index).trim();
+      }
+
+      while (index < source.length && source[index] !== "]") index++;
+      if (source[index] === "]") index++;
+      if (segment) parts.push(segment);
+      continue;
+    }
+
+    const start = index;
+    while (index < source.length && source[index] !== "." && source[index] !== "[") index++;
+    const segment = source.slice(start, index).trim();
+    if (segment) parts.push(segment);
+  }
+
+  return parts;
+}
+
+function isUnsafePathSegment(segment) {
+  return segment === "__proto__" || segment === "prototype" || segment === "constructor";
 }
 
 async function downloadImageAsBase64(url) {
