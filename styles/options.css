@@ -340,6 +340,35 @@ h2 {
     margin-bottom: 16px;
 }
 
+/* API Key 输入框:显示/隐藏切换按钮 */
+.key-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.key-input-wrapper input {
+    padding-right: 42px;
+}
+
+.key-toggle-btn {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px;
+    color: var(--text-tertiary);
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.key-toggle-btn:hover {
+    color: var(--accent-color);
+}
+
 /* Label - macOS 风格 */
 label {
     font-size: 13px;

@@ -4,7 +4,24 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();
   setupEventListeners();
   initMigrationManager();
+  initKeyToggleButtons();
 });
+
+/**
+ * 初始化 API Key 输入框的显示/隐藏切换按钮
+ */
+function initKeyToggleButtons() {
+  document.querySelectorAll(".key-toggle-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.toggleFor);
+      if (!input) return;
+      const isHidden = input.type === "password";
+      input.type = isHidden ? "text" : "password";
+      btn.textContent = isHidden ? "🙈" : "👁";
+      btn.title = isHidden ? "隐藏" : "显示";
+    });
+  });
+}
 
 // 默认配置
 const defaultSettings = {
