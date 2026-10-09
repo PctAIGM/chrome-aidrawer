@@ -418,6 +418,65 @@ label {
     box-shadow: 0 0 0 3px rgba(255, 149, 0, 0.15);
 }
 
+/* RunningHub 节点参数行：单行铺满，各输入框按比例分配宽度 */
+.rh-node-row .rh-node-id {
+    flex: 1 1 96px;
+    min-width: 96px;
+}
+
+.rh-node-row .rh-field-name {
+    flex: 2 1 150px;
+    min-width: 130px;
+}
+
+.rh-node-row .rh-source {
+    flex: 1 1 112px;
+    min-width: 112px;
+    background-color: rgba(52, 199, 89, 0.08);
+    border-color: rgba(52, 199, 89, 0.25);
+    color: #1e8e3e;
+}
+
+.rh-node-row .rh-source:hover {
+    background-color: rgba(52, 199, 89, 0.12);
+}
+
+.rh-node-row .rh-source:focus {
+    box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.15);
+}
+
+.rh-node-row .rh-fixed-value {
+    flex: 2 1 150px;
+    min-width: 130px;
+}
+
+.rh-node-row .rh-fixed-value:disabled {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-remove-rh-param {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 6px;
+    color: var(--text-tertiary);
+    transition: var(--transition);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.btn-remove-rh-param:hover {
+    color: var(--danger-color);
+    background: rgba(255, 59, 48, 0.1);
+}
+
 /* Checkbox - macOS 风格 */
 .checkbox-label {
     display: inline-flex;

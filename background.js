@@ -367,6 +367,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       // 检查是否有图片URL或配置了上传服务
       const uploadServices = settings?.imageUploadServices || [];
       const hasUploadService = uploadServices.some(service => service.isActive);
+      // RunningHub 链路由后台直传 RunningHub，本地图不经过图床，无图床服务也可改图
+      const isRh = isRunningHubProvider(provider);
 
       if (info.srcUrl) {
         // 有右键图片，检查是否有上传服务
@@ -379,6 +381,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         if (info.srcUrl.startsWith("data:")) {
           // Base64图片，通常可以直接使用
           warningMessage = null;
+        } else if (isRh) {
+          // RunningHub：图片由后台直接抓取并直传，跨域图不受限；blob 图提交时会自动转换
+          warningMessage = info.srcUrl.includes("blob:")
+            ? "该图片将在提交时自动转换后直传 RunningHub"
+            : null;
         } else if (info.srcUrl.includes("blob:") || info.srcUrl.includes("localhost") || info.srcUrl.includes("127.0.0.1")) {
           // 本地或blob URL，可能有访问限制
           warningMessage = hasUploadService
@@ -411,8 +418,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
               console.log("消息发送失败:", err.message);
             }
           });
-      } else if (hasUploadService) {
-        // 没有右键图片但有上传服务，显示文件选择对话框
+      } else if (hasUploadService || isRh) {
+        // 没有右键图片但有上传服务（或 RunningHub 直传链路），显示文件选择对话框
         chrome.tabs
           .sendMessage(tab.id, {
             action: "showEditDialog",
@@ -607,6 +614,7 @@ async function handleGenerateImage(
     }
 
     const config = {
+      name: provider.name,
       endpoint: provider.endpoint,
       apiKey: provider.key,
       responsePath: provider.responsePath,
@@ -627,9 +635,26 @@ async function handleGenerateImage(
       imageFieldName: provider.imageFieldName,
       // 多图数组
       images: images,
+      // RunningHub 专用链路参数
+      apiTemplate: provider.apiTemplate,
+      rhSite: provider.rhSite,
+      rhWorkflowId: provider.rhWorkflowId,
+      rhNodeParams: provider.rhNodeParams,
+      rhPromptNodeId: provider.rhPromptNodeId,
+      rhPromptFieldName: provider.rhPromptFieldName,
+      rhNegativeNodeId: provider.rhNegativeNodeId,
+      rhNegativeFieldName: provider.rhNegativeFieldName,
+      rhImageNodeId: provider.rhImageNodeId,
+      rhImageFieldName: provider.rhImageFieldName,
+      rhSeedNodeId: provider.rhSeedNodeId,
+      rhSeedFieldName: provider.rhSeedFieldName,
     };
 
-    const { requestBody, responseData, result } = await generateWithCustomAPI(
+    // RunningHub 模板走专用链路，其余走通用自定义 API
+    const apiCall = isRunningHubProvider(provider)
+      ? generateWithRunningHub
+      : generateWithCustomAPI;
+    const { requestBody, responseData, result } = await apiCall(
       prompt,
       config,
     );
@@ -815,6 +840,283 @@ function isImageArrayParam(p) {
     && typeof p === "object"
     && p.type === "list"
     && isImageFieldType(p.fieldType);
+}
+
+// ==================== RunningHub 专用链路 ====================
+
+// RunningHub 站点基础地址
+const RUNNINGHUB_BASE_URLS = {
+  ai: "https://www.runninghub.ai",
+  cn: "https://www.runninghub.cn",
+};
+
+// RunningHub 业务码：任务仍在排队/执行中，需要继续轮询
+const RH_RUNNING_CODES = new Set([804, 813]);
+
+/**
+ * 将节点参数行映射为 RunningHub nodeInfoList。
+ * 值来源：prompt 提示词 / negative 反向提示词（空则跳过）/ image 已上传文件名（无图则跳过）/
+ * random 随机数 / fixed 固定值。
+ */
+function buildRhNodeInfoList(
+  rows,
+  ctx,
+) {
+  const list = [];
+  for (const row of rows) {
+    const nodeId = String(row?.nodeId ?? "").trim();
+    const fieldName = String(row?.fieldName ?? "").trim();
+    if (!nodeId || !fieldName) continue;
+    let fieldValue = null;
+    switch (row.source) {
+      case "prompt":
+        fieldValue = ctx.prompt;
+        break;
+      case "negative":
+        fieldValue = ctx.negativePrompt && ctx.negativePrompt.trim() ? ctx.negativePrompt.trim() : null;
+        break;
+      case "image":
+        fieldValue = ctx.uploadedFileName || null;
+        break;
+      case "random":
+        fieldValue = String(Math.floor(Math.random() * 2147483647));
+        break;
+      default:
+        fieldValue = row.value !== undefined && row.value !== null && String(row.value) !== "" ? String(row.value) : null;
+    }
+    if (fieldValue === null || fieldValue === "") continue;
+    list.push({ nodeId, fieldName, fieldValue });
+  }
+  return list;
+}
+
+/**
+ * 判断服务商是否走 RunningHub 专用链路：
+ * 显式声明 apiTemplate === "runninghub"，或 App 旧版导出仅携带 RunningHub 字段（无 apiTemplate）
+ */
+function isRunningHubProvider(provider) {
+  if (provider?.apiTemplate === "runninghub") return true;
+  return Boolean(provider?.rhWorkflowId)
+    && ((Array.isArray(provider.rhNodeParams) && provider.rhNodeParams.length > 0)
+      || Boolean(provider.rhPromptNodeId));
+}
+
+/**
+ * RunningHub 专用生成链路：上传输入图（可选）→ 创建任务 → 轮询输出 → 提取图片。
+ * 认证统一走 Authorization: Bearer <apiKey>，图片直传 RunningHub，不依赖图床服务。
+ */
+async function generateWithRunningHub(prompt, config) {
+  const {
+    apiKey,
+    rhSite = "ai",
+    rhWorkflowId = "",
+    rhPromptNodeId = "",
+    rhPromptFieldName = "text",
+    rhNegativeNodeId = "",
+    rhNegativeFieldName = "negative_prompt",
+    rhImageNodeId = "",
+    rhImageFieldName = "image",
+    rhSeedNodeId = "",
+    rhSeedFieldName = "seed",
+    negativePrompt = "",
+    imageUrl = null,
+    images = null,
+    pollInterval = 5,
+  } = config;
+
+  const key = (apiKey || "").trim();
+  const base = RUNNINGHUB_BASE_URLS[rhSite] || RUNNINGHUB_BASE_URLS.ai;
+  const headers = { Authorization: `Bearer ${key}` };
+  const debugData = {
+    providerName: config.name,
+    request: null,
+    response: null,
+  };
+  const rhFail = (message) => {
+    const err = new Error(message);
+    err.debugData = { ...debugData };
+    return err;
+  };
+
+  // RunningHub 仅支持单输入图：优先多图数组首张，回退单图（与 App 行为一致）
+  const imageSource = (Array.isArray(images) && images.length > 0 ? images.find((u) => !!u) : null) || imageUrl;
+
+  // Service Worker 无法访问页面上下文的 blob: URL，提前给出明确错误
+  if (imageSource && String(imageSource).startsWith("blob:")) {
+    throw rhFail("暂不支持该页面图片（blob 地址），请在改图对话框中选择本地图片文件");
+  }
+
+  if (!key) throw rhFail("RunningHub 服务商未配置 API Key");
+  if (!rhWorkflowId) throw rhFail("RunningHub 服务商缺少工作流 ID");
+  // 节点参数行与旧版固定字段二选一：都没有提示词配置则直接报配置错误
+  const rhNodeParamRows = Array.isArray(config.rhNodeParams) ? config.rhNodeParams : [];
+  if (rhNodeParamRows.length === 0 && !rhPromptNodeId) {
+    throw rhFail("RunningHub 服务商缺少提示词节点 ID");
+  }
+
+  const sendStatusUpdate = async (status) => {
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab) {
+        chrome.tabs.sendMessage(activeTab.id, {
+          action: "imageLoadingUpdate",
+          prompt: prompt,
+          status: status,
+        }).catch(() => { });
+      }
+    } catch (e) { }
+  };
+
+  try {
+    // 1. 改图：参数行中有图片来源（或旧版配置了图片节点）时，先把图上传到 RunningHub，
+    //    拿到 LoadImage 节点可用的相对路径（data.fileName）
+    let uploadedFileName = "";
+    const needsImageUpload = Boolean(imageSource) && (
+      rhNodeParamRows.some((row) => row?.source === "image")
+      || (rhNodeParamRows.length === 0 && Boolean(rhImageNodeId))
+    );
+    if (imageSource && needsImageUpload) {
+      await sendStatusUpdate("正在上传图片到 RunningHub");
+      debugData.request = `${base}/openapi/v2/media/upload/binary`;
+      const blob = await fetch(imageSource).then((r) => r.blob());
+      let ext = "png";
+      if (blob.type && (blob.type.includes("jpeg") || blob.type.includes("jpg"))) ext = "jpg";
+      else if (blob.type && (blob.type.includes("webp"))) ext = "webp";
+      const formData = new FormData();
+      formData.append("file", blob, `image_${Date.now()}.${ext}`);
+      const uploadRes = await fetch(debugData.request, { method: "POST", headers, body: formData });
+      const uploadJson = await uploadRes.json().catch(() => ({}));
+      debugData.response = uploadJson;
+      const uploadMsg = uploadJson.msg || uploadJson.message || `HTTP ${uploadRes.status}`;
+      if (!uploadRes.ok || uploadJson.code !== 0 || !uploadJson.data?.fileName) {
+        throw rhFail(`图片上传 RunningHub 失败: ${uploadMsg}`);
+      }
+      uploadedFileName = uploadJson.data.fileName;
+    }
+
+    // 2. 创建任务（nodeInfoList 覆盖输入节点）：优先节点参数行，回退旧版固定字段
+    await sendStatusUpdate("正在提交 RunningHub 任务");
+    let nodeInfoList;
+    if (rhNodeParamRows.length > 0) {
+      nodeInfoList = buildRhNodeInfoList(rhNodeParamRows, { prompt, negativePrompt, uploadedFileName });
+    } else {
+      nodeInfoList = [{
+        nodeId: String(rhPromptNodeId),
+        fieldName: rhPromptFieldName || "text",
+        fieldValue: prompt,
+      }];
+      // 反向提示词（可选）：节点留空时复用提示词节点，仅当反向提示词非空时发送
+      if (negativePrompt && negativePrompt.trim()) {
+        nodeInfoList.push({
+          nodeId: String(rhNegativeNodeId || rhPromptNodeId),
+          fieldName: rhNegativeFieldName || "negative_prompt",
+          fieldValue: negativePrompt.trim(),
+        });
+      }
+      // 随机种子（可选）：配置种子节点后每次任务注入随机 seed，避免重复出图
+      if (rhSeedNodeId) {
+        nodeInfoList.push({
+          nodeId: String(rhSeedNodeId),
+          fieldName: rhSeedFieldName || "seed",
+          fieldValue: String(Math.floor(Math.random() * 2147483647)),
+        });
+      }
+      if (rhImageNodeId && imageSource) {
+        nodeInfoList.push({
+          nodeId: String(rhImageNodeId),
+          fieldName: rhImageFieldName || "image",
+          fieldValue: uploadedFileName,
+        });
+      }
+    }
+    if (nodeInfoList.length === 0) {
+      throw rhFail("RunningHub 服务商缺少提示词节点 ID");
+    }
+
+    debugData.request = `${base}/task/openapi/create`;
+    const createBody = { apiKey: key, workflowId: rhWorkflowId, nodeInfoList };
+    const createRes = await fetch(debugData.request, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(createBody),
+    });
+    const createJson = await createRes.json().catch(() => ({}));
+    debugData.response = createJson;
+    const createMsg = createJson.msg || createJson.message || `HTTP ${createRes.status}`;
+    if (!createRes.ok || createJson.code !== 0) {
+      throw rhFail(`创建 RunningHub 任务失败: ${createMsg}`);
+    }
+    const taskId = createJson.data?.taskId;
+    if (!taskId) {
+      throw rhFail("RunningHub 未返回任务 ID");
+    }
+
+    // 3. 轮询任务输出（POST /task/openapi/outputs）
+    const intervalMs = Math.max(2, pollInterval || 5) * 1000;
+    const maxAttempts = 60;
+    let outputsJson = null;
+    let requestBodyForDebug = { workflowId: rhWorkflowId, nodeInfoList, taskId };
+    debugData.request = `${base}/task/openapi/outputs`;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      await sendStatusUpdate(`等待工作流执行 (轮询 ${attempt}/${maxAttempts})`);
+      try {
+        const pollRes = await fetch(debugData.request, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey: key, taskId }),
+        });
+        const pollJson = await pollRes.json().catch(() => ({}));
+        debugData.response = pollJson;
+
+        const code = Number(pollJson.code);
+        if (code === 0) {
+          outputsJson = pollJson;
+          break;
+        }
+        if (!RH_RUNNING_CODES.has(code)) {
+          // 805 等终态失败：带上 failedReason（含出错节点与堆栈信息）
+          const reason = pollJson.data?.failedReason || pollJson.msg || pollJson.message || `code ${code}`;
+          throw rhFail(`RunningHub 任务执行失败: ${reason}`);
+        }
+        // 804 执行中 / 813 排队中：继续等待
+        await sendStatusUpdate(`${pollJson.msg || "等待工作流执行"} (轮询 ${attempt}/${maxAttempts})`);
+      } catch (pollErr) {
+        if (pollErr?.debugData) throw pollErr; // 业务失败直接抛出
+        // 单次网络失败/超时：继续下一次轮询
+      }
+    }
+    if (!outputsJson) {
+      throw rhFail(`轮询超时（已尝试 ${maxAttempts} 次）`);
+    }
+
+    // 4. 提取输出图片（outputs 为文件数组，取第一个带 fileUrl 的条目）
+    const outputs = Array.isArray(outputsJson.data) ? outputsJson.data : [];
+    const imageEntry = outputs.find((item) => typeof item?.fileUrl === "string" && item.fileUrl);
+    if (!imageEntry) {
+      throw rhFail("API响应中未找到图片字段");
+    }
+
+    await sendStatusUpdate("结果已接收");
+
+    let finalImageUrl = imageEntry.fileUrl;
+    if (finalImageUrl.startsWith("http")) {
+      await sendStatusUpdate("图片下载中");
+      finalImageUrl = await downloadImageAsBase64(finalImageUrl);
+    }
+
+    return {
+      requestBody: requestBodyForDebug,
+      responseData: outputsJson,
+      result: { success: true, imageUrl: finalImageUrl },
+    };
+  } catch (err) {
+    // 网络层错误补充调试信息后再抛出
+    if (!err.debugData) {
+      err.debugData = { ...debugData };
+    }
+    throw err;
+  }
 }
 
 async function generateWithCustomAPI(prompt, config) {
@@ -2569,6 +2871,19 @@ chrome.commands.onCommand.addListener(async (command) => {
 async function testProvider(settings) {
   try {
     const { endpoint, apiKey, customHeaders, customParams } = settings;
+
+    // RunningHub 模板：仅校验配置完整性（不创建真实任务，避免消耗点数）
+    if (isRunningHubProvider(settings)) {
+      const rhRows = Array.isArray(settings.rhNodeParams) ? settings.rhNodeParams : [];
+      if (!apiKey) return { success: false, error: "缺少 API Key" };
+      if (!settings.rhWorkflowId) return { success: false, error: "缺少工作流 ID" };
+      const validRows = rhRows.filter((r) => String(r?.nodeId || "").trim() && String(r?.fieldName || "").trim());
+      if (validRows.length === 0 && !settings.rhPromptNodeId) {
+        return { success: false, error: "缺少提示词节点配置" };
+      }
+      return { success: true };
+    }
+
     if (!endpoint) return { success: false, error: "缺少端点" };
 
     const headers = {

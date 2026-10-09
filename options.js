@@ -247,8 +247,16 @@ function createProviderItem(provider) {
   }
 
   div.querySelector(".provider-name").textContent = provider.name;
-  div.querySelector(".provider-endpoint").textContent = provider.endpoint;
-  div.querySelector(".provider-endpoint").title = provider.endpoint; // Add tooltip
+  // RunningHub 服务商显示站点与工作流 ID，便于区分通用 API 服务商
+  const isRhCard = provider.apiTemplate === "runninghub"
+    || (!provider.apiTemplate
+      && provider.rhWorkflowId
+      && ((Array.isArray(provider.rhNodeParams) && provider.rhNodeParams.length > 0) || provider.rhPromptNodeId));
+  const endpointText = isRhCard
+    ? `RunningHub (${provider.rhSite === "cn" ? "国内站" : "国际站"}) · 工作流: ${provider.rhWorkflowId || "未配置"}`
+    : provider.endpoint;
+  div.querySelector(".provider-endpoint").textContent = endpointText;
+  div.querySelector(".provider-endpoint").title = endpointText; // Add tooltip
 
   const btnCopy = div.querySelector(".btn-copy");
   if (btnCopy) {
@@ -420,12 +428,23 @@ function setupEventListeners() {
     serviceTypeRadios.forEach(radio => {
       radio.addEventListener("change", (e) => {
         const isEdit = e.target.value === "edit";
-        editModeConfig.style.display = isEdit ? "block" : "none";
-        if (isEdit) {
+        const isRh = getFormApiTemplate() === "runninghub";
+        editModeConfig.style.display = isEdit && !isRh ? "block" : "none";
+        if (isEdit && !isRh) {
           editModeConfig.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
       });
     });
+  }
+
+  // 接口类型（通用自定义 / RunningHub）切换逻辑
+  const apiTemplateSelect = document.getElementById("providerApiTemplate");
+  if (apiTemplateSelect) {
+    apiTemplateSelect.addEventListener("change", onApiTemplateChange);
+  }
+  const addRhNodeParamBtn = document.getElementById("addRhNodeParamBtn");
+  if (addRhNodeParamBtn) {
+    addRhNodeParamBtn.addEventListener("click", () => addRhNodeRow());
   }
 
   // 导出/导入配置
@@ -705,6 +724,137 @@ function addParameterRow(
   container.appendChild(clone);
 }
 
+// ==================== RunningHub 表单逻辑 ====================
+
+/**
+ * 读取当前表单的接口类型（custom 通用自定义 / runninghub 专用链路）
+ * @returns {string}
+ */
+function getFormApiTemplate() {
+  const select = document.getElementById("providerApiTemplate");
+  return select?.value === "runninghub" ? "runninghub" : "custom";
+}
+
+/**
+ * 接口类型切换：RunningHub 模式预填默认节点参数行，并隐藏通用 API 专属配置
+ */
+function onApiTemplateChange() {
+  const isRh = getFormApiTemplate() === "runninghub";
+  updateApiTemplateVisibility(isRh);
+
+  if (isRh) {
+    const list = document.getElementById("rhNodeParamsList");
+    if (list && list.children.length === 0) {
+      // 默认节点参数行：提示词 + 改图时的图片行
+      const serviceType = document.querySelector('input[name="serviceType"]:checked')?.value || "generate";
+      addRhNodeRow("", "text", "prompt", "");
+      if (serviceType === "edit") {
+        addRhNodeRow("", "image", "image", "");
+      }
+    }
+    const rhPollInterval = document.getElementById("rhPollInterval");
+    if (rhPollInterval && (!rhPollInterval.value || Number(rhPollInterval.value) < 2)) {
+      rhPollInterval.value = 5;
+    }
+    // RunningHub 自带轮询，关闭通用异步模式
+    const asyncToggle = document.getElementById("providerAsyncMode");
+    if (asyncToggle) {
+      asyncToggle.checked = false;
+      const asyncSection = document.getElementById("asyncConfigSection");
+      if (asyncSection) asyncSection.style.display = "none";
+    }
+  }
+}
+
+/**
+ * 根据接口类型显示/隐藏表单分组（RunningHub 模式隐藏通用 API 专属配置）
+ * @param {boolean} isRh - 是否为 RunningHub 模式
+ */
+function updateApiTemplateVisibility(isRh) {
+  const groups = [
+    "providerTemplateGroup",
+    "editModeConfig",
+    "providerEndpointGroup",
+    "asyncModeGroup",
+    "providerResponsePathGroup",
+    "headersGroup",
+    "bodyParamsGroup",
+  ];
+  groups.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isRh ? "none" : "";
+  });
+
+  // editModeConfig 的显隐还受服务类型影响，非 RH 时按服务类型恢复
+  if (!isRh) {
+    const editModeConfig = document.getElementById("editModeConfig");
+    const serviceType = document.querySelector('input[name="serviceType"]:checked')?.value || "generate";
+    if (editModeConfig) editModeConfig.style.display = serviceType === "edit" ? "block" : "none";
+  }
+
+  const rhSection = document.getElementById("rhConfigSection");
+  if (rhSection) rhSection.style.display = isRh ? "block" : "none";
+}
+
+/**
+ * 添加一行 RunningHub 节点参数
+ * @param {string} nodeId - 节点 ID
+ * @param {string} fieldName - 字段名
+ * @param {string} source - 值来源：prompt/negative/image/random/fixed
+ * @param {string} value - 固定值（仅 source=fixed 时可编辑）
+ */
+function addRhNodeRow(nodeId = "", fieldName = "", source = "fixed", value = "") {
+  const template = document.getElementById("rhNodeRowTemplate");
+  const container = document.getElementById("rhNodeParamsList");
+  if (!template || !container) return;
+
+  const clone = template.content.cloneNode(true);
+  const row = clone.querySelector(".rh-node-row");
+  const nodeIdInput = row.querySelector(".rh-node-id");
+  const fieldNameInput = row.querySelector(".rh-field-name");
+  const sourceSelect = row.querySelector(".rh-source");
+  const valueInput = row.querySelector(".rh-fixed-value");
+  const removeBtn = row.querySelector(".btn-remove-rh-param");
+
+  nodeIdInput.value = nodeId;
+  fieldNameInput.value = fieldName;
+  sourceSelect.value = source;
+
+  const updateValueInput = () => {
+    const isFixed = sourceSelect.value === "fixed";
+    valueInput.disabled = !isFixed;
+    valueInput.value = isFixed ? value : "";
+  };
+  updateValueInput();
+  sourceSelect.addEventListener("change", updateValueInput);
+  removeBtn.addEventListener("click", () => row.remove());
+
+  container.appendChild(clone);
+}
+
+/**
+ * 收集表单中的 RunningHub 节点参数行（过滤掉节点 ID 或字段名缺失的行）
+ * @returns {Array<{nodeId: string, fieldName: string, source: string, value?: string}>}
+ */
+function collectRhNodeParams() {
+  const rows = [];
+  document.querySelectorAll("#rhNodeParamsList .rh-node-row").forEach((row) => {
+    const nodeId = row.querySelector(".rh-node-id").value.trim();
+    const fieldName = row.querySelector(".rh-field-name").value.trim();
+    const source = row.querySelector(".rh-source").value;
+    const value = row.querySelector(".rh-fixed-value").value.trim();
+    if (!nodeId || !fieldName) return;
+    rows.push({
+      nodeId,
+      fieldName,
+      source,
+      // 仅固定值需要携带 value，动态来源的值在请求时注入
+      value: source === "fixed" ? value : undefined,
+    });
+  });
+  return rows;
+}
+
 function showProviderForm(provider = null) {
   clearProviderForm(); // 先清空，防止状态残留
 
@@ -733,11 +883,55 @@ function showProviderForm(provider = null) {
     );
     if (serviceTypeRadio) serviceTypeRadio.checked = true;
 
-    // 显示/隐藏改图模式配置
-    const editModeConfig = document.getElementById("editModeConfig");
-    if (editModeConfig) {
-      editModeConfig.style.display = serviceType === "edit" ? "block" : "none";
+    // 接口类型与 RunningHub 配置回显（兼容 App 旧版导出：无 apiTemplate 但携带 RunningHub 字段）
+    const isRh = provider.apiTemplate === "runninghub"
+      || (!provider.apiTemplate
+        && provider.rhWorkflowId
+        && ((Array.isArray(provider.rhNodeParams) && provider.rhNodeParams.length > 0) || provider.rhPromptNodeId));
+    const apiTemplateSelect = document.getElementById("providerApiTemplate");
+    if (apiTemplateSelect) apiTemplateSelect.value = isRh ? "runninghub" : "custom";
+    if (isRh) {
+      const rhSiteSelect = document.getElementById("rhSite");
+      if (rhSiteSelect) rhSiteSelect.value = provider.rhSite === "cn" ? "cn" : "ai";
+      document.getElementById("rhWorkflowId").value = provider.rhWorkflowId || "";
+      const rhPollInterval = document.getElementById("rhPollInterval");
+      if (rhPollInterval) rhPollInterval.value = provider.pollInterval || 5;
+
+      const rhList = document.getElementById("rhNodeParamsList");
+      if (rhList) rhList.innerHTML = "";
+      const storedRhParams = Array.isArray(provider.rhNodeParams) ? provider.rhNodeParams : [];
+      if (storedRhParams.length > 0) {
+        storedRhParams.forEach((p) => {
+          addRhNodeRow(
+            String(p?.nodeId ?? ""),
+            String(p?.fieldName ?? ""),
+            String(p?.source || "fixed"),
+            p?.value !== undefined && p?.value !== null ? String(p.value) : "",
+          );
+        });
+      } else if (provider.rhPromptNodeId) {
+        // 旧版固定字段迁移为节点参数行（保存后清空旧字段）
+        addRhNodeRow(provider.rhPromptNodeId, provider.rhPromptFieldName || "text", "prompt", "");
+        addRhNodeRow(
+          provider.rhNegativeNodeId || provider.rhPromptNodeId,
+          provider.rhNegativeFieldName || "negative_prompt",
+          "negative",
+          "",
+        );
+        if (provider.rhImageNodeId) {
+          addRhNodeRow(provider.rhImageNodeId, provider.rhImageFieldName || "image", "image", "");
+        }
+        if (provider.rhSeedNodeId) {
+          addRhNodeRow(provider.rhSeedNodeId, provider.rhSeedFieldName || "seed", "random", "");
+        }
+      } else {
+        addRhNodeRow("", "text", "prompt", "");
+        if (serviceType === "edit") {
+          addRhNodeRow("", "image", "image", "");
+        }
+      }
     }
+    updateApiTemplateVisibility(isRh);
 
     // 设置multipart选项
     const useMultipartCheckbox = document.getElementById("providerUseMultipart");
@@ -894,6 +1088,19 @@ function clearProviderForm() {
   const containerHeaders = document.getElementById("customHeadersList");
   if (containerParams) containerParams.innerHTML = "";
   if (containerHeaders) containerHeaders.innerHTML = "";
+
+  // 重置接口类型与 RunningHub 配置
+  const apiTemplateSelect = document.getElementById("providerApiTemplate");
+  if (apiTemplateSelect) apiTemplateSelect.value = "custom";
+  const rhWorkflowIdInput = document.getElementById("rhWorkflowId");
+  if (rhWorkflowIdInput) rhWorkflowIdInput.value = "";
+  const rhSiteSelect = document.getElementById("rhSite");
+  if (rhSiteSelect) rhSiteSelect.value = "ai";
+  const rhPollInterval = document.getElementById("rhPollInterval");
+  if (rhPollInterval) rhPollInterval.value = 5;
+  const rhList = document.getElementById("rhNodeParamsList");
+  if (rhList) rhList.innerHTML = "";
+  updateApiTemplateVisibility(false);
 }
 
 async function saveProvider() {
@@ -923,20 +1130,42 @@ async function saveProvider() {
   const useMultipart = document.getElementById("providerUseMultipart").checked;
   const imageFieldName = document.getElementById("providerImageFieldName").value.trim() || "image";
 
-  if (!name || !endpoint) {
+  // 接口类型与 RunningHub 配置
+  const isRh = getFormApiTemplate() === "runninghub";
+  const rhSite = document.getElementById("rhSite").value === "cn" ? "cn" : "ai";
+  const rhWorkflowId = document.getElementById("rhWorkflowId").value.trim();
+  const rhNodeParams = collectRhNodeParams();
+  const rhPollInterval = parseInt(document.getElementById("rhPollInterval").value) || 5;
+
+  if (isRh) {
+    // RunningHub 校验：与 App 端保持一致
+    if (!name || !rhWorkflowId || rhNodeParams.length === 0) {
+      showStatus("请填写服务商名称、工作流 ID 和节点参数", "error");
+      return;
+    }
+    if (!rhNodeParams.some((row) => row.source === "prompt")) {
+      showStatus("至少需要一行值来源为「提示词」的节点参数", "error");
+      return;
+    }
+    if (serviceType === "edit" && !rhNodeParams.some((row) => row.source === "image")) {
+      showStatus("改图类型需要一行值来源为「图片」的节点参数", "error");
+      return;
+    }
+  } else if (!name || !endpoint) {
     showStatus("请输入服务商名称和端点", "error");
     return;
   }
 
   const customHeaders = {};
-  document.querySelectorAll(".header-row").forEach((row) => {
+  document.querySelectorAll("#customHeadersList .header-row").forEach((row) => {
     const k = row.querySelector(".header-key").value.trim();
     const v = row.querySelector(".header-value").value.trim();
     if (k) customHeaders[k] = v;
   });
 
+  // 仅收集 Body Params 容器内的行，避免误收 RunningHub 节点行（同用 .param-row 类）
   const customParams = {};
-  document.querySelectorAll(".param-row").forEach((row) => {
+  document.querySelectorAll("#customParamsList .param-row").forEach((row) => {
     const k = row.querySelector(".param-key").value.trim();
     const type = row.querySelector(".param-type").value;
     // 兼容 input 和 select
@@ -971,18 +1200,35 @@ async function saveProvider() {
     let providers = response.providers || [];
     const providerData = {
       name,
-      endpoint,
+      // RunningHub 模式下 endpoint 仅作展示用途，实际地址由站点选择决定
+      endpoint: isRh
+        ? (rhSite === "cn" ? "https://www.runninghub.cn" : "https://www.runninghub.ai")
+        : endpoint,
       key,
       responsePath,
       serviceType,
       customHeaders,
       customParams,
-      asyncMode,
+      asyncMode: isRh ? false : asyncMode,
       useMultipart,
       imageFieldName,
-      ...(asyncMode
-        ? { jobIdPath, pollUrl, statusPath, successValue, pollInterval }
-        : {}),
+      // RunningHub 专用配置（非 RunningHub 模式清空，保持与 App 端格式一致）
+      apiTemplate: isRh ? "runninghub" : "custom",
+      rhSite: isRh ? rhSite : "",
+      rhWorkflowId: isRh ? rhWorkflowId : "",
+      rhNodeParams: isRh ? rhNodeParams : [],
+      // 旧版固定字段：迁移到 rhNodeParams 后清空，运行时以 rhNodeParams 优先
+      rhPromptNodeId: "",
+      rhPromptFieldName: "",
+      rhNegativeNodeId: "",
+      rhNegativeFieldName: "",
+      rhImageNodeId: "",
+      rhImageFieldName: "",
+      rhSeedNodeId: "",
+      rhSeedFieldName: "",
+      ...(isRh
+        ? { pollInterval: rhPollInterval }
+        : (asyncMode ? { jobIdPath, pollUrl, statusPath, successValue, pollInterval } : {})),
     };
 
     if (editingProviderId) {
@@ -1143,10 +1389,21 @@ async function testProviderConnection(provider) {
         responsePath: provider.responsePath,
         customHeaders: provider.customHeaders,
         customParams: provider.customParams,
+        // RunningHub 专用链路配置（仅校验，不创建真实任务）
+        apiTemplate: provider.apiTemplate,
+        rhWorkflowId: provider.rhWorkflowId,
+        rhNodeParams: provider.rhNodeParams,
+        rhPromptNodeId: provider.rhPromptNodeId,
       },
     });
-    if (result.success) showStatus(`✅ ${provider.name} 连接成功！`, "success");
-    else throw new Error(result.error || "连接失败");
+    if (result.success) {
+      showStatus(
+        provider.apiTemplate === "runninghub"
+          ? `✅ ${provider.name} RunningHub 配置校验通过（未实际运行工作流）`
+          : `✅ ${provider.name} 连接成功！`,
+        "success",
+      );
+    } else throw new Error(result.error || "连接失败");
   } catch (error) {
     showStatus(`❌ ${provider.name} 连接失败：${error.message}`, "error");
   } finally {

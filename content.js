@@ -754,6 +754,25 @@ async function downloadImageAsBase64(imageUrl) {
   }
 }
 
+/**
+ * 判断改图服务商是否走 RunningHub 专用链路。
+ * RunningHub 的图片由后台直传 RunningHub，本地图片无需先上传图床。
+ * @param {string} providerId - 服务商 ID
+ * @returns {Promise<boolean>}
+ */
+async function isRhEditProvider(providerId) {
+  try {
+    const { settings } = await chrome.storage.local.get("settings");
+    const p = (settings?.providers || []).find((x) => x.id === providerId);
+    if (!p) return false;
+    if (p.apiTemplate === "runninghub") return true;
+    return Boolean(p.rhWorkflowId)
+      && ((Array.isArray(p.rhNodeParams) && p.rhNodeParams.length > 0) || Boolean(p.rhPromptNodeId));
+  } catch (e) {
+    return false;
+  }
+}
+
 // 显示改图对话框
 function showEditDialog(imageUrl, providerId, providerName, warning) {
   console.log("showEditDialog called with:", { imageUrl, providerId, providerName, warning });
@@ -761,7 +780,6 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
   // 移除已有的对话框
   const existing = document.getElementById("ai-draw-edit-modal");
   if (existing) existing.remove();
-
   const container = document.createElement("div");
   container.id = "ai-draw-edit-modal";
   container.style.cssText = `
@@ -911,6 +929,18 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     reuploadBtn.onclick = () => handleCurrentImageUpload();
   }
 
+  // RunningHub 专用链路：隐藏图床上传入口，本地文件选择后直接使用
+  isRhEditProvider(providerId).then((isRh) => {
+    if (!isRh) return;
+    if (uploadBtn) uploadBtn.style.display = "none";
+    if (reuploadBtn) reuploadBtn.style.display = "none";
+    if (fileInput) {
+      fileInput.onchange = () => {
+        if (fileInput.files[0]) handleLocalImageUpload();
+      };
+    }
+  });
+
   // 处理本地图片上传
   async function handleLocalImageUpload() {
     const file = fileInput.files[0];
@@ -921,6 +951,18 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
 
     if (!file.type.startsWith('image/')) {
       showUploadStatus('请选择图片文件', 'error');
+      return;
+    }
+
+    // RunningHub 专用链路：本地图片直传 RunningHub，无需先上传图床
+    if (await isRhEditProvider(providerId)) {
+      try {
+        currentImageUrl = await fileToBase64(file);
+        updateImagePreview(currentImageUrl);
+        showUploadStatus('图片已选择（将直传 RunningHub）', 'success');
+      } catch (error) {
+        showUploadStatus('图片读取失败: ' + (error.message || error), 'error');
+      }
       return;
     }
 
@@ -1260,9 +1302,22 @@ function showEditDialog(imageUrl, providerId, providerName, warning) {
     }
 
     if (!currentImageUrl) {
-      errorDiv.textContent = "请先选择并上传图片";
+      const isRh = await isRhEditProvider(providerId);
+      errorDiv.textContent = isRh ? "请先选择图片" : "请先选择并上传图片";
       errorDiv.style.display = "block";
       return;
+    }
+
+    // RunningHub 专用链路：blob 地址后台无法访问，提交前通过页面 canvas 转为 base64 直传
+    if (String(currentImageUrl).startsWith("blob:") && (await isRhEditProvider(providerId))) {
+      try {
+        currentImageUrl = await downloadImageAsBase64(currentImageUrl);
+        updateImagePreview(currentImageUrl);
+      } catch (convertError) {
+        errorDiv.textContent = "图片转换失败（" + (convertError.message || convertError) + "），请选择本地图片文件";
+        errorDiv.style.display = "block";
+        return;
+      }
     }
 
     submitBtn.disabled = true;

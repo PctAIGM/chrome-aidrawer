@@ -24,36 +24,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 检查provider是否配置了imageBase64字段类型
   const providers = settings?.providers || [];
   const currentProvider = providers.find(p => p.id === pendingEditProvider);
-  const hasImageBase64Field = currentProvider?.customParams && 
+  const hasImageBase64Field = currentProvider?.customParams &&
     Object.values(currentProvider.customParams).some(
       v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
     );
+  // RunningHub 专用链路：图片直传 RunningHub，本地文件直接使用，无需图床
+  const isRhProvider = !!currentProvider && (
+    currentProvider.apiTemplate === 'runninghub'
+    || (currentProvider.rhWorkflowId && !currentProvider.apiTemplate
+      && ((Array.isArray(currentProvider.rhNodeParams) && currentProvider.rhNodeParams.length > 0) || !!currentProvider.rhPromptNodeId))
+  );
 
   if (imageUrl) {
     const preview = document.getElementById('imagePreview');
     preview.src = imageUrl;
     preview.style.display = 'block';
-  } else if (hasUploadService || hasImageBase64Field) {
-    // 没有右键图片但有上传服务或配置了imageBase64字段，显示文件选择
+  } else if (hasUploadService || hasImageBase64Field || isRhProvider) {
+    // 没有右键图片但有上传服务、配置了imageBase64字段或 RunningHub 直传链路，显示文件选择
     const imageSelectSection = document.getElementById('imageSelectSection');
     if (imageSelectSection) {
       imageSelectSection.style.display = 'block';
     }
 
-    // 如果没有上传服务但配置了imageBase64，隐藏上传按钮
+    // RunningHub 不走图床，始终隐藏上传按钮；imageBase64 无图床服务时也隐藏
     const uploadImageBtn = document.getElementById('uploadImageBtn');
-    if (uploadImageBtn && !hasUploadService && hasImageBase64Field) {
+    if (uploadImageBtn && (isRhProvider || (!hasUploadService && hasImageBase64Field))) {
       uploadImageBtn.style.display = 'none';
     }
   }
 
-  setupEventListeners(imageUrl, pendingEditProvider, hasUploadService, hasImageBase64Field);
+  setupEventListeners(imageUrl, pendingEditProvider, hasUploadService, hasImageBase64Field, isRhProvider);
 
   // 加载高级参数
   loadAdvancedParams(pendingEditProvider);
 });
 
-function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBase64Field) {
+function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBase64Field, isRhProvider) {
   const promptInput = document.getElementById('promptInput');
   const submitBtn = document.getElementById('submitBtn');
   const cancelBtn = document.getElementById('cancelBtn');
@@ -125,8 +131,8 @@ function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBas
     });
   }
 
-  // 当配置了imageBase64字段时，允许选择本地图片直接使用
-  if (hasImageBase64Field && imageFileInput) {
+  // 当配置了imageBase64字段或 RunningHub 直传链路时，允许选择本地图片直接使用
+  if ((hasImageBase64Field || isRhProvider) && imageFileInput) {
     imageFileInput.addEventListener('change', async () => {
       const file = imageFileInput.files[0];
       if (!file) return;
@@ -152,7 +158,7 @@ function setupEventListeners(imageUrl, providerId, hasUploadService, hasImageBas
           imageSelectSection.style.display = 'none';
         }
 
-        showUploadStatus('图片已选择（Base64格式）', 'success');
+        showUploadStatus(isRhProvider && !hasImageBase64Field ? '图片已选择（将直传 RunningHub）' : '图片已选择（Base64格式）', 'success');
       } catch (error) {
         console.error('图片读取失败:', error);
         showUploadStatus('图片读取失败: ' + error.message, 'error');

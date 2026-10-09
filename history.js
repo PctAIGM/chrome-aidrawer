@@ -1333,8 +1333,8 @@ async function startEditImage(item) {
       return;
     }
 
-    // 检查是否有需要URL的服务商（非multipart方式）
-    const urlBasedProviders = editProviders.filter(p => !p.useMultipart);
+    // 检查是否有需要URL的服务商（非multipart且非 RunningHub 直传）
+    const urlBasedProviders = editProviders.filter(p => !p.useMultipart && !isRhEditProviderConfig(p));
     const needsUploadService = urlBasedProviders.length > 0 && !imageData.startsWith('http');
 
     // 如果有需要URL的服务商，且图片不是URL格式，需要上传服务
@@ -1362,9 +1362,11 @@ async function startEditImage(item) {
 async function prepareAndOpenEditDialog(imageData, provider, hasUploadService) {
   let finalImageUrl = imageData;
   let isMultipart = provider.useMultipart;
+  // RunningHub 专用链路：图片由后台直传 RunningHub，base64 无需先上传图床
+  const isRh = isRhEditProviderConfig(provider);
 
   // 如果服务商需要URL方式，且当前图片是base64，需要上传
-  if (!isMultipart && imageData.startsWith('data:')) {
+  if (!isMultipart && !isRh && imageData.startsWith('data:')) {
     if (!hasUploadService) {
       showNotification("该服务商需要图片URL，请先配置图片上传服务", "error");
       return;
@@ -1392,7 +1394,17 @@ async function prepareAndOpenEditDialog(imageData, provider, hasUploadService) {
     }
   }
 
-  openEditDialog(finalImageUrl, provider.id, provider.name, isMultipart, imageData);
+  openEditDialog(finalImageUrl, provider.id, provider.name, isMultipart, imageData, isRh);
+}
+
+/**
+ * 判断服务商是否走 RunningHub 专用链路（图片由后台直传 RunningHub，无需图床）
+ */
+function isRhEditProviderConfig(provider) {
+  if (!provider) return false;
+  if (provider.apiTemplate === "runninghub") return true;
+  return Boolean(provider.rhWorkflowId)
+    && ((Array.isArray(provider.rhNodeParams) && provider.rhNodeParams.length > 0) || Boolean(provider.rhPromptNodeId));
 }
 
 // 显示服务商选择对话框
@@ -1481,7 +1493,7 @@ function showProviderSelectDialog(imageData, providers, hasUploadService) {
 }
 
 // 打开改图对话框
-function openEditDialog(imageUrl, providerId, providerName, isMultipart = false, imageData = null) {
+function openEditDialog(imageUrl, providerId, providerName, isMultipart = false, imageData = null, isRh = false) {
   // 移除已有的对话框
   const existing = document.getElementById("ai-draw-edit-modal");
   if (existing) existing.remove();
@@ -1505,7 +1517,7 @@ function openEditDialog(imageUrl, providerId, providerName, isMultipart = false,
   `;
 
   // 显示服务商类型提示
-  const typeHint = isMultipart ? " (文件上传模式)" : " (URL模式)";
+  const typeHint = isRh ? " (RunningHub 直传)" : isMultipart ? " (文件上传模式)" : " (URL模式)";
 
   modal.innerHTML = `
     <div style="font-weight: bold; font-size: 20px; margin-bottom: 8px; color: #1a202c; display: flex; align-items: center; gap: 8px;">
@@ -1615,8 +1627,8 @@ function openEditDialog(imageUrl, providerId, providerName, isMultipart = false,
       };
 
       // 根据服务商类型决定如何传递图片
-      if (isMultipart && imageData) {
-        // Multipart方式：传递base64数据
+      if ((isMultipart || isRh) && imageData) {
+        // Multipart / RunningHub 直传方式：传递base64数据
         message.useLocalFile = true;
         message.imageData = imageData;
         message.fileName = "edit-image.png";

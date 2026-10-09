@@ -38,6 +38,17 @@ function isImageArrayField(value) {
     && isImageFieldType(value.fieldType);
 }
 
+/**
+ * 判断服务商是否走 RunningHub 专用链路。
+ * RunningHub 的图片由后台直传 RunningHub，本地文件无需先上传图床。
+ */
+function isRhProviderConfig(provider) {
+  if (!provider) return false;
+  if (provider.apiTemplate === "runninghub") return true;
+  return Boolean(provider.rhWorkflowId)
+    && ((Array.isArray(provider.rhNodeParams) && provider.rhNodeParams.length > 0) || Boolean(provider.rhPromptNodeId));
+}
+
 async function loadSettings() {
   try {
     // 解析 URL 参数
@@ -367,6 +378,8 @@ async function checkUploadServiceAvailability() {
       Object.values(currentProvider.customParams).some(
         v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
       );
+    // RunningHub 专用链路：图片直传 RunningHub，不需要图床
+    const isRhProvider = isRhProviderConfig(currentProvider);
 
     // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
     const hasImagesField = currentProvider?.customParams &&
@@ -394,8 +407,8 @@ async function checkUploadServiceAvailability() {
     // 历史记录选项卡始终显示（在改图模式下）
     historyTab.style.display = "block";
 
-    if (useMultipart || hasImageBase64Field) {
-      // multipart接口或imageBase64字段：总是显示上传选项卡，不需要图床
+    if (useMultipart || hasImageBase64Field || isRhProvider) {
+      // multipart接口、imageBase64字段或 RunningHub 直传：总是显示上传选项卡，不需要图床
       uploadTab.style.display = "block";
       if (uploadImageBtn) {
         uploadImageBtn.style.display = "none"; // 隐藏上传到图床按钮
@@ -510,6 +523,8 @@ async function generateImage() {
       Object.values(currentProvider.customParams).some(
         v => v && typeof v === 'object' && v.fieldType === 'imageBase64'
       );
+    // RunningHub 专用链路：图片直传 RunningHub，不需要图床
+    const isRhProvider = isRhProviderConfig(currentProvider);
 
     // 检查是否配置了多图字段类型（type === 'list' 且 fieldType 为图片）
     const hasImagesField = currentProvider?.customParams &&
@@ -541,25 +556,25 @@ async function generateImage() {
         return;
       }
       
-      if (useMultipart || hasImageBase64Field) {
-        // multipart模式或imageBase64字段：使用base64数据
+      if (useMultipart || hasImageBase64Field || isRhProvider) {
+        // multipart模式、imageBase64字段或 RunningHub 直传：使用base64数据
         if (selectedHistoryImageData) {
           // 直接使用base64数据
-          imageFile = { 
+          imageFile = {
             name: "history-image.png",
             type: "image/png",
-            dataUrl: selectedHistoryImageData 
+            dataUrl: selectedHistoryImageData
           };
           console.log("使用历史记录图片(base64)，multipart或imageBase64模式");
         } else if (selectedHistoryImageUrl.startsWith("data:")) {
-          imageFile = { 
+          imageFile = {
             name: "history-image.png",
             type: "image/png",
-            dataUrl: selectedHistoryImageUrl 
+            dataUrl: selectedHistoryImageUrl
           };
           console.log("使用历史记录图片(base64 URL)，multipart或imageBase64模式");
-        } else if (hasImageBase64Field) {
-          // imageBase64模式但图片是URL，需要下载转换（后续在background中处理）
+        } else if (hasImageBase64Field || isRhProvider) {
+          // imageBase64 模式需后台下载转换；RunningHub 由后台直接抓取 URL 直传
           imageUrl = selectedHistoryImageUrl;
           console.log("使用历史记录图片(URL)，imageBase64模式将在后台转换");
         } else {
@@ -589,17 +604,17 @@ async function generateImage() {
         // multipart接口：直接使用本地文件
         imageFile = fileInput.files[0];
         console.log("使用multipart模式，直接使用本地文件:", imageFile.name);
-      } else if (hasImageBase64Field && fileInput.files.length > 0) {
-        // imageBase64字段：直接使用本地文件（转换为base64）
+      } else if ((hasImageBase64Field || isRhProvider) && fileInput.files.length > 0) {
+        // imageBase64字段或 RunningHub 直传：直接使用本地文件（转换为base64）
         imageFile = fileInput.files[0];
-        console.log("使用imageBase64模式，直接使用本地文件:", imageFile.name);
-      } else if (!useMultipart && !hasImageBase64Field && uploadedImageUrl) {
+        console.log("使用imageBase64/RunningHub模式，直接使用本地文件:", imageFile.name);
+      } else if (!useMultipart && !hasImageBase64Field && !isRhProvider && uploadedImageUrl) {
         // 非multipart接口且无imageBase64字段：使用上传后的URL
         imageUrl = uploadedImageUrl;
         console.log("使用非multipart模式，图片URL:", imageUrl);
       } else {
         // 错误情况
-        if (useMultipart || hasImageBase64Field) {
+        if (useMultipart || hasImageBase64Field || isRhProvider) {
           showError("请先选择图片文件");
         } else {
           if (fileInput.files.length > 0) {
